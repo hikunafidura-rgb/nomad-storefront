@@ -1,40 +1,29 @@
 # NOMAD — Carry Less. Go Further.
 
-Premium travel-lifestyle e-commerce (frontend-only, no build step) for Build Challenge #02.
+Premium travel-lifestyle e-commerce (frontend-only, no build step, no backend) for Build Challenge #02.
+
+- Demo: https://nomad-storefront-l268.vercel.app/
+- Repo: https://github.com/hikunafidura-rgb/nomad-storefront
 
 ## Run locally
-- Double-click `index.html`, or
-- `npx serve .` then open the URL, or
-- VS Code Live Server.
+- Double-click `index.html`, or `npx serve .`, or VS Code Live Server. No `npm install`.
 
-No `npm install` needed. Data persists in `localStorage` (cart, wishlist, orders, coupon).
+## Features
+- Homepage editorial: hero, featured, categories, Build Your Kit, best sellers, banner, reviews, story, newsletter.
+- Catalog (8 products): live search, category / price / color / availability filters, 5 sort modes, count, loading + empty states.
+- Product detail: gallery, rating, stock badge, color/size variants, qty capped at stock, tabs, related, recently viewed.
+- Bag drawer + page: qty steppers, remove, subtotal. Persists in `localStorage`.
+- 4-step checkout: validated info form → shipping (Regular free over Rp500rb / Express / Same Day, total updates instantly) → 5 simulated payments → review with edit links → `#NMD-xxxxxx` receipt.
+- Tracking: 6-step timeline + `SIMULATE NEXT STATUS` demo control.
+- Coupons: `NOMAD10` (−10%), `KIT5` (−5%, auto-applied by Build Your Kit). One coupon per order — no stacking.
+- Wishlist with explicit move-to-bag; announcement bar copies `NOMAD10`.
 
-## Judge flow (22 steps — all work)
-1. Open homepage → hero `SHOP COLLECTION` / `BUILD YOUR KIT`
-2. Search via navbar icon (e.g. "bottle") → real filtering
-3. Shop: category / price / color / availability / sort — count updates, empty state + `CLEAR FILTERS`
-4. Open product → gallery, rating, stock badge (`Only 8 left…`)
-5. Pick color/size variant → reflected in bag
-6. Qty capped at stock → `ADD TO BAG` → toast + drawer
-7. Add second product (or `Build Your Kit → ADD ALL TO BAG`)
-8. Bag page: `−/+`, remove, subtotal; coupon `NOMAD10` = −10%; Regular free over Rp500rb
-9. Checkout 01 Information → inline validation blocks empty/invalid phone
-10. 02 Shipping → Regular/Express/Same Day updates total instantly
-11. 03 Payment → 5 simulated methods → `SIMULATE PAYMENT` → processing → success
-12. 04 Review → edit links → `PLACE ORDER` → `#NMD-xxxxxx` receipt
-13. `TRACK ORDER` → 6-step timeline + `SIMULATE NEXT STATUS` demo button
-14. Wishlist ♡ on any card, `/wishlist` page, Recently Viewed on shop
-15. Newsletter → simulated success; announcement bar copies `NOMAD10`
+## Judge demo flow
+Search "bottle" → filter Apparel + Low stock → open Rain Jacket → pick size M → qty 2 → add → Build Your Kit Weekend → ADD ALL + KIT5 → bag → apply `NOMAD10` (replaces KIT5) → checkout → invalid phone blocked → valid info → Same Day → QRIS → simulate → success → review → place order → receipt → track to Delivered.
 
-## Submission draft
-- Nama peserta: (isi)
-- Nama project: NOMAD — Carry Less. Go Further.
-- Niche: Premium travel lifestyle gear
-- Link website: (isi setelah deploy — Netlify/Vercel drag folder ini)
-- Link GitHub: (isi)
-- Konsep singkat: Editorial travel store; 8 produk, kit bundling per trip, full flow simulasi tanpa backend.
-- Target customer: 18–35, weekend/city/light-hike/work trips, minimalist packing.
-- Fitur unggulan: Build Your Kit (add-all+bundle savings), simulated checkout 4 langkah, live tracking demo, kupon, wishlist, recently viewed, free-shipping threshold.
-
-## Deploy
-Folder ini statis: drag ke Netlify Drop / `vercel --prod` / GitHub Pages. Tidak ada env var.
+## Limitations (by design, per challenge brief)
+- Payment & shipping are simulations; no real gateway, courier, or backend.
+- Orders/cart/wishlist live in this browser's `localStorage` (session-scoped, per device).
+- One coupon per order; KIT5 applies to the whole bag, not kit items only.
+- Ratings, reviews, prices, stock, photos are dummy/demo data (Unsplash with picsum fallback).
+- Same-Day courier copy is demo flavor text.

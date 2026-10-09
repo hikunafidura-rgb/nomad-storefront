@@ -76,14 +76,14 @@ const SHIPPING = [
 ];
 const PAYMENTS = [
   { id:"transfer", name:"Bank Transfer", desc:"BCA · Mandiri · BRI — verify within 24h", icon:"TRF" },
-  { id:"va", name:"Virtual Account", desc:"Auto-verified VA number after checkout", icon:"VA" },
+  { id:"va", name:"Virtual Account", desc:"Simulated VA number after checkout", icon:"VA" },
   { id:"ewallet", name:"E-Wallet", desc:"GoPay · OVO · DANA", icon:"WLT" },
   { id:"qris", name:"QRIS", desc:"Scan once from any m-banking / wallet", icon:"QR" },
   { id:"cod", name:"COD", desc:"Pay cash when your order arrives", icon:"COD" },
 ];
 const STATUSES = ["Pesanan Dibuat","Pembayaran Berhasil","Pesanan Diproses","Diserahkan ke Kurir","Dalam Pengiriman","Pesanan Sampai"];
 const STATUS_DESC = ["We received your order.","Your simulated payment cleared.","We are packing your gear.","Handed to the courier partner.","On the way to your address.","Delivered. Enjoy the journey."];
-const COUPONS = { "NOMAD10":0.10 };
+const COUPONS = { "NOMAD10":0.10, "KIT5":0.05 };
 const FREE_SHIP_THRESHOLD = 500000;
 
 const COLOR_HEX = { Black:"#202421", Sand:"#D8D1C5", Olive:"#5A624E", Silver:"#B9BEC2" };
@@ -341,9 +341,9 @@ function mountKit(){
     document.getElementById("kitSummary").innerHTML=`
       <h3>${k.label}</h3><p class="small muted" style="margin:0 0 12px">${k.desc}</p>
       ${items.map(p=>`<div class="kv"><span>${p.name}</span><span>${rp(p.price)}</span></div>`).join("")}
-      <div class="kv kit-save"><span>Kit savings (5%)</span><span>− ${rp(save)}</span></div>
+      <div class="kv kit-save"><span>Bundle perk · code KIT5</span><span>− ${rp(save)}</span></div>
       <div class="kv total"><span>Total</span><span>${rp(total-save)}</span></div>
-      <button class="btn btn-dark btn-block" style="margin-top:14px" onclick="addKit('${key}')">ADD ALL TO BAG</button>
+      <button class="btn btn-dark btn-block" style="margin-top:14px" onclick="addKit('${key}')">ADD ALL TO BAG + KIT5</button>
       <p class="small muted center" style="margin:10px 0 0">Free Regular shipping unlocked 🎉</p>`;
   };
   tabs.forEach(t=>t.onclick=()=>paint(t.dataset.kit));
@@ -352,14 +352,16 @@ function mountKit(){
 window.addKit=(key)=>{
   const k=KITS[key]; let n=0;
   k.ids.forEach(id=>{const p=byId(id);if(addToCart(id,p.colors[0],p.sizes?p.sizes[0]:null,1,false))n++;});
-  toast(`${n} items added to bag`,"ok"); openCart();
+  if(!getCoupon()){ store.set("nomad_coupon","KIT5"); toast(`${n} items added · KIT5 −5% applied`,"ok"); }
+  else toast(`${n} items added · kept coupon ${getCoupon()} (one coupon per order)`);
+  openCart();
 };
 
 /* ---------- SHOP ---------- */
 let shopState={ q:"", cats:[], colors:[], price:"all", avail:"all", sort:"featured" };
 function renderShop(q){
   shopState={ q:q.get("q")||"", cats:q.get("cat")?[q.get("cat")]:[], colors:[], price:"all", avail:"all", sort:q.get("sort")||"featured" };
-  return `<div class="shop-head wrap"><h1>Shop All</h1><p>8 essentials · filter by trip, color and budget. Everything you see is buyable.</p></div>
+  return `<div class="shop-head wrap"><h1>Shop All</h1><p>8 essentials · filter by trip, color and budget. Demo prices & stock — everything you see is buyable.</p></div>
   <div class="shop-layout">
     <aside class="filters">
       <h3>Search</h3>
@@ -371,7 +373,7 @@ function renderShop(q){
       <div class="f-group"><h3>Color</h3>${["Black","Sand","Olive","Silver"].map(c=>`
         <label class="f-check"><input type="checkbox" data-fcolor="${c}"/> <span class="dot" style="background:${COLOR_HEX[c]};width:14px;height:14px"></span> ${c}</label>`).join("")}</div>
       <div class="f-group"><h3>Availability</h3>
-        <select class="f-select" id="fAvail"><option value="all">All</option><option value="ready">In stock</option><option value="low">Low stock (≤ 8)</option></select></div>
+        <select class="f-select" id="fAvail"><option value="all">All</option><option value="ready">In stock (9+)</option><option value="low">Low stock (≤ 8)</option></select></div>
       <button class="btn btn-ghost btn-block btn-sm" onclick="clearFilters()">CLEAR FILTERS</button>
     </aside>
     <div>
@@ -395,6 +397,7 @@ function filteredProducts(){
   if(s.price==="under250") r=r.filter(p=>p.price<250000);
   if(s.price==="250to400") r=r.filter(p=>p.price>=250000&&p.price<=400000);
   if(s.price==="over400") r=r.filter(p=>p.price>400000);
+  if(s.avail==="ready") r=r.filter(p=>p.stock>8);
   if(s.avail==="low") r=r.filter(p=>p.stock<=8);
   if(s.sort==="price-asc") r.sort((a,b)=>a.price-b.price);
   if(s.sort==="price-desc") r.sort((a,b)=>b.price-a.price);
@@ -451,7 +454,7 @@ function renderProduct(id){
       <div class="pd-info">
         <span class="pcard-cat">${p.cat}${p.variantLabel?" · "+p.variantLabel:""}</span>
         <h1>${p.name}</h1>
-        <div class="pd-rating"><span class="stars">${stars(p.rating)}</span><span><b style="color:var(--ink)">${p.rating}</b> · ${p.reviews} verified reviews</span></div>
+        <div class="pd-rating"><span class="stars">${stars(p.rating)}</span><span><b style="color:var(--ink)">${p.rating}</b> · ${p.reviews} reviews</span></div>
         <div class="pd-price"><span class="now">${rp(p.price)}</span>${p.old?`<span class="price-old">${rp(p.old)}</span><span class="badge sale">Save ${rp(p.old-p.price)}</span>`:""}</div>
         <span class="stock ${stockCls}"><i></i>${stockTxt}</span>
         <p class="pd-short">${p.desc}</p>
@@ -526,15 +529,15 @@ function renderCart(){
     <div class="coupon-row"><input id="cpn" placeholder="Coupon code" value="${getCoupon()||""}" /><button class="btn btn-ghost btn-sm" onclick="applyCoupon()">Apply</button></div>
     <div class="coupon-msg" id="cpnMsg"></div>
     <a href="#/checkout" class="btn btn-dark btn-block">PROCEED TO CHECKOUT</a>
-    <p class="small muted center">Try <b>NOMAD10</b> for 10% off</p>
+    <p class="small muted center">Try <b>NOMAD10</b> for 10% off or <b>KIT5</b> for 5% off</p>
   </div></div></div>`;
 }
 window.applyCoupon=()=>{
   const v=(document.getElementById("cpn").value||"").trim().toUpperCase();
   const m=document.getElementById("cpnMsg");
   if(!v){store.set("nomad_coupon",null);render();return;}
-  if(COUPONS[v]){store.set("nomad_coupon",v);toast("Coupon applied — 10% off","ok");render();}
-  else{m.textContent="Invalid coupon code. Try NOMAD10.";m.className="coupon-msg err";}
+  if(COUPONS[v]){store.set("nomad_coupon",v);toast(`Coupon applied — ${Math.round(COUPONS[v]*100)}% off`,"ok");render();}
+  else{m.textContent="Invalid coupon code. Try NOMAD10 or KIT5.";m.className="coupon-msg err";}
 };
 
 /* ---------- WISHLIST ---------- */
@@ -578,7 +581,7 @@ function bindCheckout(){
     const v=co.info;
     m.innerHTML=`<div class="card"><h3>01 — Shipping Information</h3><div class="form-grid">
       ${[["name","Full Name","text","e.g. Nadya Prameswari"],["phone","Phone Number","tel","e.g. 0812xxxxxxx"],["address","Address","text","Street, building, landmark"],["city","City","text","e.g. Jakarta Selatan"],["province","Province / Region","text","e.g. DKI Jakarta"],["postal","Postal Code","text","e.g. 12430"]].map(f=>`
-      <div class="field ${f[0]==="address"?"full":""}" id="fw-${f[0]}"><label>${f[1]} *</label><input id="fi-${f[0]}" type="${f[2]}" placeholder="${f[3]}" value="${esc(v[f[0]]||"")}" /><span class="err-msg">This field is required</span></div>`).join("")}
+      <div class="field ${f[0]==="address"?"full":""}" id="fw-${f[0]}"><label>${f[1]} *</label><input id="fi-${f[0]}" type="${f[2]}" placeholder="${f[3]}" value="${esc(v[f[0]]||"")}" /><span class="err-msg" role="alert">This field is required</span></div>`).join("")}
       <div class="field full"><label>Order Notes (optional)</label><textarea id="fi-notes" rows="2" placeholder="Gate code, leave with security, gift wrap…">${esc(v.notes||"")}</textarea></div>
     </div><div class="btn-row" style="margin-top:18px"><a href="#/cart" class="btn btn-ghost">← BACK TO BAG</a><button class="btn btn-dark" style="flex:1" onclick="saveInfo()">CONTINUE TO SHIPPING →</button></div></div>`;
   }
@@ -606,7 +609,7 @@ function bindCheckout(){
       <div class="kv"><span>Payment · ${py.name} <button class="cl-remove" onclick="co.step=3;render()">Edit</button></span><span>Simulated</span></div>
       <div class="kv"><span>Ship to <button class="cl-remove" onclick="co.step=1;render()">Edit</button></span><span style="text-align:right;max-width:55%">${esc(v.name)}<br/><span class="muted">${esc(v.address)}, ${esc(v.city)} ${esc(v.postal)}<br/>${esc(v.phone)}</span></span></div>
       <div class="kv total"><span>Total Payment</span><span>${rp(t.total)}</span></div>
-      <div class="btn-row" style="margin-top:14px"><button class="btn btn-ghost" onclick="co.step=3;render()">← BACK</button><button class="btn btn-dark" style="flex:1" onclick="placeOrder()">PLACE ORDER</button></div></div>`;
+      <div class="btn-row" style="margin-top:14px"><button class="btn btn-ghost" onclick="co.step=3;render()">← BACK</button><button class="btn btn-dark" style="flex:1" onclick="this.disabled=true;placeOrder()">PLACE ORDER</button></div></div>`;
   }
 }
 window.saveInfo=()=>{
@@ -631,6 +634,7 @@ window.simulatePay=()=>{
   },1700);
 };
 window.placeOrder=()=>{
+  if(!getCart().length){ toast("Your bag is empty","err"); return; }
   const t=totals(co.ship);
   const id="#NMD-"+Math.floor(100000+Math.random()*900000);
   const order={ id, items:getCart(), info:{...co.info}, ship:co.ship, pay:co.pay,
@@ -666,7 +670,7 @@ function renderTrackingList(){
   const orders=getOrders();
   if(!orders.length) return `<div class="page center" style="max-width:560px"><h1>Track your order</h1><p class="sub">No orders yet in this session. Place one to see live tracking here.</p><a href="#/shop" class="btn btn-dark">SHOP COLLECTION</a></div>`;
   return `<div class="page" style="max-width:760px"><h1>Track your order</h1><p class="sub">${orders.length} order${orders.length>1?"s":""} in this session</p>
-  ${orders.map(o=>`<a href="#/tracking/${encodeURIComponent(o.id)}" class="card" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><b>${o.id}</b><div class="small muted">${o.items.reduce((s,i)=>s+i.qty,0)} items · ${rp(o.total)} · ${STATUSES[o.status]}</div></div><span class="link-arrow">Track →</span></a>`).join("")}</div>`;
+  ${orders.map(o=>`<a href="#/tracking/${encodeURIComponent(o.id)}" class="card" style="display:flex;justify-content:space-between;align-items:center;gap:8px 16px;flex-wrap:wrap;margin-bottom:12px"><div><b>${o.id}</b><div class="small muted">${o.items.reduce((s,i)=>s+i.qty,0)} items · ${rp(o.total)} · ${STATUSES[o.status]}</div></div><span class="link-arrow">Track →</span></a>`).join("")}</div>`;
 }
 function renderTracking(id){
   const o=findOrder(decodeURIComponent(id));
