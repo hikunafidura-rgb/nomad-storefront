@@ -10,19 +10,19 @@ const PRODUCTS = [
     tag:"24L daily carry that fits cabin, commute and weekend.",
     desc:"Our most-loved daily pack. The Daypack 24L carries a 16″ laptop, a change of clothes and everything you reach for in transit — without ever looking bulky. A structured back panel keeps it comfortable from gate to street, and the coated shell shrugs off light rain.",
     specs:[["Capacity","24L"],["Weight","980 g"],["Material","900D recycled nylon, PFC-free DWR"],["Laptop","Up to 16″ suspended sleeve"],["Warranty","2 years"]],
-    images:[U("photo-1553062407-98eeb64c6a62"), U("photo-1491637639811-60e2756cc1c7")] },
+    images:[U("photo-1553062407-98eeb64c6a62"), U("photo-1622560480605-d83c853bc5c3")] },
   { id:"trail-sling", name:"NOMAD Trail Sling", cat:"Bags", price:329000, old:null, badge:null,
     colors:["Black","Olive"], sizes:null, stock:12, rating:4.8, reviews:268, added:5,
     tag:"5L crossbody for essentials you want within reach.",
     desc:"Phone, wallet, passport, earbuds — the Trail Sling keeps the small things exactly where your hand expects them. Wear it on the chest for crowded stations or on the back for open streets. The magnetic buckle opens one-handed.",
     specs:[["Capacity","5L"],["Weight","320 g"],["Material","Cordura®-style woven, water-repellent"],["Strap","Adjustable, left/right wear"],["Warranty","2 years"]],
-    images:[U("photo-1547949003-9792a18a2601"), U("photo-1590874103328-eac38a683ce7")] },
+    images:[U("photo-1524498250077-390f9e378fc0"), U("photo-1551632811-561732d1e306")] },
   { id:"travel-organizer", name:"NOMAD Travel Organizer", cat:"Travel Accessories", price:189000, old:null, badge:"Loved by many",
     colors:["Black","Sand"], sizes:null, stock:25, rating:4.9, reviews:531, added:6,
     tag:"Every cable, card and document in one slim folio.",
     desc:"Stop digging. The Travel Organizer lays flat like a book with a place for passport, cards, pens, cables and a power bank. It slips into any NOMAD bag and works as a standalone clutch for café work sessions.",
     specs:[["Size","23 × 16 × 4 cm"],["Weight","280 g"],["Material","Vegan leather touch, recycled lining"],["Fits","Passport, 6 cards, cables, power bank"],["Warranty","1 year"]],
-    images:[U("photo-1591561954557-26941169b49e"), U("photo-1548036328-c9fa89d128fa")] },
+    images:[U("photo-1620109176813-e91290f6c795"), U("photo-1627123424574-724758594e93")] },
   { id:"insulated-bottle", name:"NOMAD Insulated Bottle", cat:"Everyday Essentials", price:249000, old:null, badge:"Best Seller",
     colors:["Black","Silver","Sand"], sizes:null, stock:20, rating:4.8, reviews:894, added:7,
     tag:"750 ml. Cold 24h, hot 12h. Zero leaks, zero rattle.",
@@ -34,7 +34,7 @@ const PRODUCTS = [
     tag:"Packs into its own pocket. 10K waterproofing.",
     desc:"A genuinely packable shell — it folds into its chest pocket in under a minute and disappears into your daypack. Taped seams, a two-way front zip and an adjustable hood handle sudden downpours from Sudirman to Sembalun.",
     specs:[["Waterproof","10,000 mm / breathability 8,000 g"],["Weight","380 g (size M)"],["Fit","Regular, room for mid-layer"],["Packs into","Own chest pocket"],["Warranty","2 years"]],
-    images:[U("photo-1591047139829-d91aecb6caea"), U("photo-1551028719-00167b16eac5")] },
+    images:[U("photo-1591047139829-d91aecb6caea"), U("photo-1519692933481-e162a57d6721")] },
   { id:"packing-cubes", name:"NOMAD Packing Cubes", cat:"Travel Accessories", price:279000, old:null, badge:null,
     colors:["Sand","Olive"], sizes:null, variantLabel:"Set of 3", stock:15, rating:4.9, reviews:342, added:3,
     tag:"Set of 3 compression cubes. Pack 30% flatter.",
@@ -52,7 +52,7 @@ const PRODUCTS = [
     tag:"The charger-to-cable home base for any bag.",
     desc:"A structured pouch with origami-style pockets that fit chargers, dongles, SSDs and two phones. It stands open on tray tables and zips shut into a brick that slides into any bag's front pocket.",
     specs:[["Size","22 × 14 × 8 cm"],["Weight","310 g"],["Material","Ballistic-weave shell, recycled lining"],["Fits","65W charger, cables, SSD, 2 phones"],["Warranty","1 year"]],
-    images:[U("photo-1495707902641-75cac588d2e9"), U("photo-1533228100845-08145b01de14")] },
+    images:[U("photo-1498049794561-7780e7231661"), U("photo-1614179689702-355944cd0918")] },
 ];
 
 const CATS = [
@@ -144,18 +144,18 @@ function totals(shipId="regular", coupon=getCoupon()){
   const bundle=couponOn?0:bundleDiscount(cart); // never stacked with a coupon
   const after=sub-disc-bundle;
   let ship=0;
-  if(cart.length){ const m=SHIPPING.find(s=>s.id===shipId); ship=m.price; if(shipId==="regular"&&after>=FREE_SHIP_THRESHOLD) ship=0; }
+  if(cart.length){ const m=SHIPPING.find(s=>s.id===shipId)||SHIPPING[0]; ship=m.price; if(m.id==="regular"&&after>=FREE_SHIP_THRESHOLD) ship=0; }
   return { sub, disc, bundle, ship, total:after+ship };
 }
 const bundleLine=(t)=>t.bundle?`<div class="kv kit-save"><span>Bundle savings (5%)</span><span>− ${rp(t.bundle)}</span></div>`:"";
 function addToCart(pid, color, size, qty=1, openDrawer=true){
-  const p=byId(pid); if(!p) return;
+  const p=byId(pid); if(!p) return false;
   color=color||p.colors[0]; size=size||(p.sizes?p.sizes[0]:null);
   const cart=getCart();
+  const totalInCart=cart.filter(i=>i.pid===pid).reduce((s,i)=>s+i.qty,0);
+  if(totalInCart+qty>p.stock){ toast(`Only ${p.stock} in stock`,"err"); return false; }
   const key=(i)=>i.pid===pid&&i.color===color&&i.size===size;
   const ex=cart.find(key);
-  const cur=ex?ex.qty:0;
-  if(cur+qty>p.stock){ toast(`Only ${p.stock} in stock`,"err"); return false; }
   if(ex) ex.qty+=qty; else cart.push({pid,color,size,qty});
   setCart(cart);
   toast("Added to bag");
@@ -193,9 +193,27 @@ function renderDrawer(){
     <a href="#/cart" class="btn btn-ghost btn-block" onclick="closeCart()">VIEW BAG</a>
     <a href="#/checkout" class="btn btn-dark btn-block" style="margin-top:8px" onclick="closeCart()">PROCEED TO CHECKOUT</a>`;
 }
-window.chQty=(ix,d)=>{const c=getCart();const p=byId(c[ix].pid);const n=c[ix].qty+d;if(n<1)return rmLine(ix);if(n>p.stock){toast(`Only ${p.stock} in stock`,"err");return;}c[ix].qty=n;setCart(c);if(location.hash.includes("#/cart"))render();};
-window.rmLine=(ix)=>{const c=getCart();c.splice(ix,1);setCart(c);toast("Removed from bag");if(location.hash.includes("#/cart"))render();};
+window.chQty=(ix,d)=>{
+  const c=getCart(); if(!c[ix]) return;
+  const p=byId(c[ix].pid);
+  const totalOthers=c.filter((item,idx)=>idx!==ix&&item.pid===c[ix].pid).reduce((s,i)=>s+i.qty,0);
+  const n=c[ix].qty+d;
+  if(n<1)return rmLine(ix);
+  if(totalOthers+n>p.stock){toast(`Only ${p.stock} in stock`,"err");return;}
+  c[ix].qty=n;setCart(c);
+  if(location.hash.includes("#/cart"))render(false);
+};
+window.rmLine=(ix)=>{const c=getCart();c.splice(ix,1);setCart(c);toast("Removed from bag");if(location.hash.includes("#/cart"))render(false);};
 window.closeCart=closeCart;
+window.quickAdd=(pid)=>{
+  const p=byId(pid); if(!p) return;
+  if(p.sizes&&p.sizes.length){
+    go("#/product/"+pid);
+    toast("Please select your size");
+    return;
+  }
+  addToCart(pid);
+};
 
 /* ---------- wishlist ---------- */
 function toggleWish(pid){
@@ -227,7 +245,7 @@ function productCard(p){
       <button class="wish-btn ${wished?"active":""}" onclick="toggleWish('${p.id}')" aria-label="Wishlist">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="${wished?"currentColor":"none"}" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7.5-4.7-10-9.3C.4 8.6 2.3 5 5.7 5c2 0 3.4 1.1 4.3 2.6l3 4.2 3-4.2c.9-1.5 2.3-2.6 4.3-2.6 3.4 0 5.3 3.6 3.7 6.7C19.5 16.3 12 21 12 21Z"/></svg>
       </button>
-      <button class="quick-add" onclick="addToCart('${p.id}')">Quick Add — ${rp(p.price)}</button>
+      <button class="quick-add" onclick="quickAdd('${p.id}')">Quick Add — ${rp(p.price)}</button>
     </div>
     <div class="pcard-body">
       <span class="pcard-cat">${p.cat}</span>
@@ -338,7 +356,7 @@ function renderHome(){
     <div class="news">
       <h2>Stay in the Loop</h2>
       <p>Field notes, packing guides and early access to limited colorways. One email a month.</p>
-      <form class="news-form" onsubmit="return subscribe(event)"><input id="newsEmail" type="email" required placeholder="you@email.com" /><button class="btn btn-dark">Subscribe</button></form>
+      <form class="news-form" onsubmit="return subscribe(event)"><input id="newsEmail" type="email" required placeholder="you@email.com" aria-label="Email address for newsletter" /><button class="btn btn-dark">Subscribe</button></form>
       <p class="small muted" id="newsMsg" style="margin-top:12px"></p>
     </div>
   </section>`;
@@ -431,7 +449,7 @@ function paintShopGrid(loading=false){
   const r=filteredProducts();
   document.getElementById("shopCount").textContent=`${r.length} product${r.length!==1?"s":""}`;
   const chips=[];
-  if(shopState.q) chips.push(`“${esc(shopState.q)}”`);
+  if(shopState.q) chips.push(`“${shopState.q}”`);
   shopState.cats.forEach(c=>chips.push(c));
   shopState.colors.forEach(c=>chips.push(c));
   document.getElementById("shopChips").innerHTML=chips.map(c=>`<span class="chip">${esc(c)}</span>`).join("");
@@ -499,7 +517,7 @@ function renderProduct(id){
         </div>
       </div>
     </div>
-    <div class="sticky-cta"><button class="btn btn-dark" onclick="pdAdd('${p.id}')">ADD TO BAG — ${rp(p.price)}</button></div>
+    <div class="sticky-cta"><button class="btn btn-dark" onclick="pdAdd('${p.id}')">ADD TO BAG — <span id="stickyCtaPrice">${rp(p.price)}</span></button></div>
     <div class="sec-head" style="margin-top:56px"><div><h2>You May Also Like</h2></div><a class="link-arrow" href="#/shop">View all →</a></div>
     <div class="grid grid-4">${rel.map(productCard).join("")}</div>
   </div>`;
@@ -514,7 +532,15 @@ window.setColor=(c)=>{pdSel.color=c;document.getElementById("colorName").textCon
   document.querySelectorAll("#colorRow .swatch").forEach(b=>b.classList.toggle("active",b.title===c));};
 window.setSize=(btn,s)=>{pdSel.size=s;const el=document.getElementById("sizeName");if(el)el.textContent=s;
   btn.parentElement.querySelectorAll(".swatch").forEach(b=>b.classList.toggle("active",b===btn));};
-window.setQty=(d,pid)=>{const p=byId(pid);pdSel.qty=Math.min(p.stock,Math.max(1,pdSel.qty+d));document.getElementById("qtyN").textContent=pdSel.qty;document.getElementById("ctaPrice").textContent=rp(p.price*pdSel.qty);};
+window.setQty=(d,pid)=>{
+  const p=byId(pid);
+  pdSel.qty=Math.min(p.stock,Math.max(1,pdSel.qty+d));
+  const pr=rp(p.price*pdSel.qty);
+  document.getElementById("qtyN").textContent=pdSel.qty;
+  document.getElementById("ctaPrice").textContent=pr;
+  const sc=document.getElementById("stickyCtaPrice");
+  if(sc) sc.textContent=pr;
+};
 window.pdAdd=(pid)=>{ if(addToCart(pid,pdSel.color,pdSel.size,pdSel.qty)){} };
 window.tab=(btn,k)=>{btn.parentElement.querySelectorAll("button").forEach(b=>b.classList.remove("active"));btn.classList.add("active");paintTab(k,location.hash.split("/")[2]);};
 function paintTab(k,pid){
@@ -601,8 +627,8 @@ function bindCheckout(){
     const v=co.info;
     m.innerHTML=`<div class="card"><h3>01 — Shipping Information</h3><div class="form-grid">
       ${[["name","Full Name","text","e.g. Nadya Prameswari"],["phone","Phone Number","tel","e.g. 0812xxxxxxx"],["address","Address","text","Street, building, landmark"],["city","City","text","e.g. Jakarta Selatan"],["province","Province / Region","text","e.g. DKI Jakarta"],["postal","Postal Code","text","e.g. 12430"]].map(f=>`
-      <div class="field ${f[0]==="address"?"full":""}" id="fw-${f[0]}"><label>${f[1]} *</label><input id="fi-${f[0]}" type="${f[2]}" placeholder="${f[3]}" value="${esc(v[f[0]]||"")}" /><span class="err-msg" role="alert">This field is required</span></div>`).join("")}
-      <div class="field full"><label>Order Notes (optional)</label><textarea id="fi-notes" rows="2" placeholder="Gate code, leave with security, gift wrap…">${esc(v.notes||"")}</textarea></div>
+      <div class="field ${f[0]==="address"?"full":""}" id="fw-${f[0]}"><label for="fi-${f[0]}">${f[1]} *</label><input id="fi-${f[0]}" type="${f[2]}" placeholder="${f[3]}" value="${esc(v[f[0]]||"")}" /><span class="err-msg" role="alert">This field is required</span></div>`).join("")}
+      <div class="field full"><label for="fi-notes">Order Notes (optional)</label><textarea id="fi-notes" rows="2" placeholder="Gate code, leave with security, gift wrap…">${esc(v.notes||"")}</textarea></div>
     </div><div class="btn-row" style="margin-top:18px"><a href="#/cart" class="btn btn-ghost">← BACK TO BAG</a><button class="btn btn-dark" style="flex:1" onclick="saveInfo()">CONTINUE TO SHIPPING →</button></div></div>`;
   }
   if(co.step===2){
@@ -644,23 +670,40 @@ window.saveInfo=()=>{
 };
 window.setShip=(id)=>{co.ship=id;render();};
 window.setPay=(id)=>{co.pay=id;render();};
+let payTimer1=null, payTimer2=null;
+function closePayModal(){
+  if(payTimer1){ clearTimeout(payTimer1); payTimer1=null; }
+  if(payTimer2){ clearTimeout(payTimer2); payTimer2=null; }
+  const modal=document.getElementById("payModal");
+  if(modal) modal.classList.add("hidden");
+}
+window.closePayModal=closePayModal;
 window.simulatePay=()=>{
+  closePayModal();
   const modal=document.getElementById("payModal"),card=document.getElementById("payCard");
   modal.classList.remove("hidden");
   card.innerHTML=`<div class="spinner"></div><h3 style="margin:0 0 6px">Processing payment…</h3><p class="muted small">Contacting ${PAYMENTS.find(p=>p.id===co.pay).name} (simulated)</p>`;
-  setTimeout(()=>{
+  payTimer1=setTimeout(()=>{
     card.innerHTML=`<div class="check-big">✓</div><h3 style="margin:0 0 6px">Payment Successful</h3><p class="muted small">Creating your order…</p>`;
-    setTimeout(()=>{modal.classList.add("hidden");co.step=4;render();window.scrollTo(0,0);toast("Payment successful","ok");},900);
+    payTimer2=setTimeout(()=>{
+      closePayModal();
+      co.step=4; render(); window.scrollTo(0,0);
+      toast("Payment successful","ok");
+    },900);
   },1700);
 };
+let isPlacingOrder=false;
 window.placeOrder=()=>{
+  if(isPlacingOrder) return;
   if(!getCart().length){ toast("Your bag is empty","err"); return; }
+  isPlacingOrder=true;
   const t=totals(co.ship);
   const id="#NMD-"+Math.floor(100000+Math.random()*900000);
   const order={ id, items:getCart(), info:{...co.info}, ship:co.ship, pay:co.pay,
     sub:t.sub, disc:t.disc, bundle:t.bundle, shipCost:t.ship, total:t.total, coupon:getCoupon(),
     status:2, created:new Date().toISOString(), eta: co.ship==="sameday"?"Today":co.ship==="express"?"1–2 business days":"3–5 business days" };
   saveOrder(order); setCart([]); store.set("nomad_coupon",null); co={step:1,info:co.info,ship:"express",pay:"qris"};
+  isPlacingOrder=false;
   go("#/order/"+encodeURIComponent(id));
 };
 
@@ -711,21 +754,43 @@ function renderTracking(id){
 window.advance=(eid)=>{const o=findOrder(decodeURIComponent(eid));if(!o)return;if(o.status<STATUSES.length-1){o.status++;updateOrder(o);toast(STATUSES[o.status],"ok");render();}};
 
 /* ---------- master render ---------- */
-function render(){
+function render(scroll=true){
   const { seg, q }=parseHash();
   const app=document.getElementById("app");
-  window.scrollTo(0,0); closeCart();
+  if(scroll) window.scrollTo(0,0);
+  closeCart();
+  closePayModal();
   let html="";
-  if(seg.length===0){ html=renderHome(); app.innerHTML=html; mountKit(); }
-  else if(seg[0]==="shop"){ app.innerHTML=renderShop(q); bindShop(); }
-  else if(seg[0]==="product"){ app.innerHTML=renderProduct(seg[1]); bindProduct(seg[1]); }
-  else if(seg[0]==="cart"){ app.innerHTML=renderCart(); }
-  else if(seg[0]==="wishlist"){ app.innerHTML=renderWishlist(); }
-  else if(seg[0]==="checkout"){ app.innerHTML=renderCheckout(); bindCheckout(); }
-  else if(seg[0]==="order"){ app.innerHTML=renderOrder(seg[1]||""); }
-  else if(seg[0]==="tracking"&&seg[1]){ app.innerHTML=renderTracking(seg[1]); }
-  else if(seg[0]==="tracking"){ app.innerHTML=renderTrackingList(); }
-  else{ app.innerHTML=renderHome(); mountKit(); }
+  if(seg.length===0){
+    document.title="NOMAD — Carry Less. Go Further.";
+    html=renderHome(); app.innerHTML=html; mountKit();
+  } else if(seg[0]==="shop"){
+    document.title="Shop All — NOMAD";
+    app.innerHTML=renderShop(q); bindShop();
+  } else if(seg[0]==="product"){
+    const p=byId(seg[1]);
+    document.title=p?`${p.name} — NOMAD`:"Product Not Found — NOMAD";
+    app.innerHTML=renderProduct(seg[1]); bindProduct(seg[1]);
+  } else if(seg[0]==="cart"){
+    document.title="Your Bag — NOMAD";
+    app.innerHTML=renderCart();
+  } else if(seg[0]==="wishlist"){
+    document.title="Wishlist — NOMAD";
+    app.innerHTML=renderWishlist();
+  } else if(seg[0]==="checkout"){
+    document.title="Checkout — NOMAD";
+    app.innerHTML=renderCheckout(); bindCheckout();
+  } else if(seg[0]==="order"){
+    document.title="Order Receipt — NOMAD";
+    app.innerHTML=renderOrder(seg[1]||"");
+  } else if(seg[0]==="tracking"){
+    document.title="Track Order — NOMAD";
+    if(seg[1]) app.innerHTML=renderTracking(seg[1]);
+    else app.innerHTML=renderTrackingList();
+  } else {
+    document.title="NOMAD — Carry Less. Go Further.";
+    html=renderHome(); mountKit();
+  }
   updateBadges();
 }
 
@@ -739,8 +804,17 @@ document.getElementById("searchBtn").onclick=()=>{const b=document.getElementByI
 document.getElementById("searchGo").onclick=()=>{const v=document.getElementById("searchInput").value;go("#/shop?q="+encodeURIComponent(v));document.getElementById("searchBar").classList.add("hidden");};
 document.getElementById("searchInput").addEventListener("keydown",(e)=>{if(e.key==="Enter")document.getElementById("searchGo").click();});
 document.getElementById("announceCoupon").onclick=()=>{store.set("nomad_coupon","NOMAD10");toast("NOMAD10 saved — 10% off at checkout","ok");};
-document.addEventListener("keydown",(e)=>{if(e.key==="Escape"){closeCart();document.getElementById("payModal").classList.add("hidden");}});
-document.querySelectorAll("[data-scroll]").forEach(a=>a.addEventListener("click",()=>{const t=a.dataset.scroll;setTimeout(()=>{const el=document.getElementById(t);if(el)el.scrollIntoView({behavior:"smooth"});},80);document.getElementById("mobileMenu").classList.add("hidden");}));
+document.addEventListener("keydown",(e)=>{if(e.key==="Escape"){closeCart();closePayModal();}});
+document.querySelectorAll("[data-scroll]").forEach(a=>a.addEventListener("click",()=>{
+  const t=a.dataset.scroll;
+  document.getElementById("mobileMenu").classList.add("hidden");
+  if(location.hash&&location.hash!=="#/"&&location.hash!=="#"){
+    location.hash="#/";
+    setTimeout(()=>{const el=document.getElementById(t);if(el)el.scrollIntoView({behavior:"smooth"});},150);
+  } else {
+    const el=document.getElementById(t);if(el)el.scrollIntoView({behavior:"smooth"});
+  }
+}));
 
 updateBadges(); renderDrawer();
 if(getCoupon()==="KIT5") store.set("nomad_coupon",null); // retired: bundle perk is automatic now
