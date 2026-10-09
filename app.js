@@ -177,14 +177,20 @@ function renderDrawer(){
   }
   body.innerHTML=cart.map((i,ix)=>{const p=byId(i.pid);return `
     <div class="mini-line">
-      <a href="#/product/${p.id}">${imgTag(p.images[0],p.id,p.name)}</a>
-      <div><div class="small" style="font-weight:600">${p.name}</div>
+      <a href="#/product/${p.id}" class="mini-thumb">${imgTag(p.images[0],p.id,p.name)}</a>
+      <div class="mini-details">
+        <div class="mini-header">
+          <a class="mini-name" href="#/product/${p.id}">${p.name}</a>
+          <b class="mini-price">${rp(p.price*i.qty)}</b>
+        </div>
         <div class="small muted">${i.color}${i.size?" · "+i.size:""} · ${rp(p.price)}</div>
-        <div class="cl-qty" style="margin-top:6px">
-          <button onclick="chQty(${ix},-1)" aria-label="Decrease">−</button><b>${i.qty}</b><button onclick="chQty(${ix},1)" aria-label="Increase">+</button>
-          <button class="cl-remove" style="margin:0 0 0 8px" onclick="rmLine(${ix})">Remove</button>
-        </div></div>
-      <b class="small">${rp(p.price*i.qty)}</b>
+        <div class="cl-controls" style="margin-top:8px">
+          <div class="cl-qty" role="group" aria-label="Quantity for ${p.name}">
+            <button onclick="chQty(${ix},-1)" aria-label="Decrease quantity">−</button><b>${i.qty}</b><button onclick="chQty(${ix},1)" aria-label="Increase quantity">+</button>
+          </div>
+          <button class="cl-remove" onclick="rmLine(${ix})" aria-label="Remove ${p.name} from bag">Remove</button>
+        </div>
+      </div>
     </div>`;}).join("");
   const t=totals();
   foot.innerHTML=`
@@ -560,11 +566,23 @@ function renderCart(){
   return `<div class="page"><h1>Your Bag</h1><p class="sub">${cartQty()} items · Free Regular shipping Rp500.000+</p>
   <div class="cart-layout"><div class="cart-lines">
     ${cart.map((i,ix)=>{const p=byId(i.pid);return `<div class="cart-line">
-      ${imgTag(p.images[0],p.id,p.name)}
-      <div><a class="cl-name" href="#/product/${p.id}">${p.name}</a><div class="cl-var">${i.color}${i.size?" · Size "+i.size:""} · ${rp(p.price)} each</div>
-        <div class="cl-qty"><button onclick="chQty(${ix},-1)">−</button><b>${i.qty}</b><button onclick="chQty(${ix},1)">+</button></div>
-        <button class="cl-remove" onclick="rmLine(${ix})">Remove</button></div>
-      <div class="cl-price">${rp(p.price*i.qty)}</div></div>`;}).join("")}
+      <a href="#/product/${p.id}" class="cl-thumb">${imgTag(p.images[0],p.id,p.name)}</a>
+      <div class="cl-details">
+        <div class="cl-header">
+          <a class="cl-name" href="#/product/${p.id}">${p.name}</a>
+          <div class="cl-price">${rp(p.price*i.qty)}</div>
+        </div>
+        <div class="cl-var">${i.color}${i.size?" · Size "+i.size:""} · ${rp(p.price)} each</div>
+        <div class="cl-controls">
+          <div class="cl-qty" role="group" aria-label="Quantity for ${p.name}">
+            <button onclick="chQty(${ix},-1)" aria-label="Decrease quantity">−</button>
+            <b>${i.qty}</b>
+            <button onclick="chQty(${ix},1)" aria-label="Increase quantity">+</button>
+          </div>
+          <button class="cl-remove" onclick="rmLine(${ix})" aria-label="Remove ${p.name} from bag">Remove</button>
+        </div>
+      </div>
+    </div>`;}).join("")}
     <a href="#/shop" class="link-arrow" style="align-self:start">← Continue shopping</a>
   </div>
   <div class="summary"><h3 style="margin:0 0 4px;font-family:var(--font-ed);font-size:22px">Summary</h3>
@@ -592,13 +610,20 @@ function renderWishlist(){
   if(!w.length) return `<div class="page center" style="max-width:560px"><h1>Wishlist</h1><p class="sub">Save the gear you're eyeing. It stays here during your visit.</p><a href="#/shop" class="btn btn-dark">DISCOVER PRODUCTS</a></div>`;
   return `<div class="page"><h1>Wishlist</h1><p class="sub">${w.length} saved</p>
   <div class="cart-lines" style="max-width:780px">${w.map(p=>`
-    <div class="cart-line">${imgTag(p.images[0],p.id,p.name)}
-      <div><a class="cl-name" href="#/product/${p.id}">${p.name}</a>
+    <div class="cart-line">
+      <a href="#/product/${p.id}" class="cl-thumb">${imgTag(p.images[0],p.id,p.name)}</a>
+      <div class="cl-details">
+        <div class="cl-header">
+          <a class="cl-name" href="#/product/${p.id}">${p.name}</a>
+          <div class="cl-price">${rp(p.price)}</div>
+        </div>
         <div class="cl-var">${p.tag}</div>
-        <div class="pcard-meta"><span class="stars">${stars(p.rating)}</span><span>${p.rating} (${p.reviews})</span></div>
-        <div class="btn-row" style="margin-top:10px"><button class="btn btn-dark btn-sm" onclick="wishToCart('${p.id}')">MOVE TO BAG — ${rp(p.price)}</button><button class="cl-remove" onclick="toggleWish('${p.id}')">Remove</button></div>
+        <div class="pcard-meta" style="margin-bottom:10px"><span class="stars">${stars(p.rating)}</span><span>${p.rating} (${p.reviews})</span></div>
+        <div class="cl-controls">
+          <button class="btn btn-dark btn-sm" onclick="wishToCart('${p.id}')">MOVE TO BAG — ${rp(p.price)}</button>
+          <button class="cl-remove" onclick="toggleWish('${p.id}')">Remove</button>
+        </div>
       </div>
-      <div class="cl-price">${rp(p.price)}</div>
     </div>`).join("")}</div></div>`;
 }
 window.wishToCart=(pid)=>{ const p=byId(pid); if(!p) return;
