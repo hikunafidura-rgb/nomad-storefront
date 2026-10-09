@@ -1,5 +1,8 @@
 /* NOMAD — frontend-only e-commerce. No build, no backend. */
-const U = (id) => `https://images.unsplash.com/${id}?q=80&w=900&auto=format&fit=crop`;
+const U = (id) => {
+  const host = id.startsWith("premium_") ? "https://plus.unsplash.com" : "https://images.unsplash.com";
+  return `${host}/${id}?q=80&w=900&auto=format&fit=crop`;
+};
 const FALLBACK = (seed) => `https://picsum.photos/seed/${seed}/800/800`;
 const imgTag = (src, seed, alt, cls="", eager=false) =>
   `<img ${cls?`class="${cls}"`:""} src="${src}" alt="${alt.replace(/"/g,"")}" loading="${eager?"eager":"lazy"}"${eager?' fetchpriority="high"':""} onerror="this.onerror=null;this.src='${FALLBACK(seed)}'" />`;
@@ -10,13 +13,13 @@ const PRODUCTS = [
     tag:"24L daily carry that fits cabin, commute and weekend.",
     desc:"Our most-loved daily pack. The Daypack 24L carries a 16″ laptop, a change of clothes and everything you reach for in transit — without ever looking bulky. A structured back panel keeps it comfortable from gate to street, and the coated shell shrugs off light rain.",
     specs:[["Capacity","24L"],["Weight","980 g"],["Material","900D recycled nylon, PFC-free DWR"],["Laptop","Up to 16″ suspended sleeve"],["Warranty","2 years"]],
-    images:[U("photo-1553062407-98eeb64c6a62"), U("photo-1622560480605-d83c853bc5c3")] },
+    images:[U("photo-1553062407-98eeb64c6a62"), U("photo-1614096602561-7394f4d5dc82")] },
   { id:"trail-sling", name:"NOMAD Trail Sling", cat:"Bags", price:329000, old:null, badge:null,
     colors:["Black","Olive"], sizes:null, stock:12, rating:4.8, reviews:268, added:5,
     tag:"5L crossbody for essentials you want within reach.",
     desc:"Phone, wallet, passport, earbuds — the Trail Sling keeps the small things exactly where your hand expects them. Wear it on the chest for crowded stations or on the back for open streets. The magnetic buckle opens one-handed.",
     specs:[["Capacity","5L"],["Weight","320 g"],["Material","Cordura®-style woven, water-repellent"],["Strap","Adjustable, left/right wear"],["Warranty","2 years"]],
-    images:[U("photo-1524498250077-390f9e378fc0"), U("photo-1551632811-561732d1e306")] },
+    images:[U("photo-1613231685459-e79adcaace76"), U("photo-1485488911053-ab7dfdb9f4d5")] },
   { id:"travel-organizer", name:"NOMAD Travel Organizer", cat:"Travel Accessories", price:189000, old:null, badge:"Loved by many",
     colors:["Black","Sand"], sizes:null, stock:25, rating:4.9, reviews:531, added:6,
     tag:"Every cable, card and document in one slim folio.",
@@ -28,37 +31,37 @@ const PRODUCTS = [
     tag:"750 ml. Cold 24h, hot 12h. Zero leaks, zero rattle.",
     desc:"Double-wall vacuum insulation in a bottle that actually fits bike cages and backpack side pockets. The ceramic-feel coating is grippy without sweating, and the cap pours fast then seals with a quarter turn. Fits most cup holders.",
     specs:[["Volume","750 ml"],["Keeps cold","24 h / hot 12 h"],["Material","18/8 stainless, BPA-free cap"],["Weight","440 g"],["Warranty","1 year"]],
-    images:[U("photo-1602143407151-7111542de6e8"), U("photo-1523362628745-0c100150b504")] },
+    images:[U("photo-1602143407151-7111542de6e8"), U("photo-1767525804740-e141f0be2614")] },
   { id:"rain-jacket", name:"NOMAD Compact Rain Jacket", cat:"Apparel", price:549000, old:649000, badge:"Low Stock",
     colors:["Black","Olive"], sizes:["S","M","L","XL"], stock:8, rating:4.7, reviews:196, added:4,
     tag:"Packs into its own pocket. 10K waterproofing.",
     desc:"A genuinely packable shell — it folds into its chest pocket in under a minute and disappears into your daypack. Taped seams, a two-way front zip and an adjustable hood handle sudden downpours from Sudirman to Sembalun.",
     specs:[["Waterproof","10,000 mm / breathability 8,000 g"],["Weight","380 g (size M)"],["Fit","Regular, room for mid-layer"],["Packs into","Own chest pocket"],["Warranty","2 years"]],
-    images:[U("photo-1591047139829-d91aecb6caea"), U("photo-1519692933481-e162a57d6721")] },
+    images:[U("photo-1541635930383-c21a3eab7075"), U("photo-1782174358357-b7338e3f1437")] },
   { id:"packing-cubes", name:"NOMAD Packing Cubes", cat:"Travel Accessories", price:279000, old:null, badge:null,
     colors:["Sand","Olive"], sizes:null, variantLabel:"Set of 3", stock:15, rating:4.9, reviews:342, added:3,
     tag:"Set of 3 compression cubes. Pack 30% flatter.",
     desc:"Three cubes — large, medium and slim — that compress knits and tees so a 3-day wardrobe fits a 24L pack. Mesh windows show what's inside, and the grab handles double as drawer pulls at your stay.",
     specs:[["Set","L + M + Slim"],["Material","Ripstop nylon, mesh window"],["Compression","Dual zip, ~30% volume"],["Weight","240 g total"],["Warranty","1 year"]],
-    images:[U("photo-1523381210434-271e8be1f52b"), U("photo-1445205170230-053b83016050")] },
+    images:[U("premium_photo-1779223979914-8f6a45db4ebd"), U("premium_photo-1777926622434-0aa9e2b1f29e")] },
   { id:"travel-cap", name:"NOMAD Travel Cap", cat:"Apparel", price:179000, old:null, badge:null,
     colors:["Black","Sand"], sizes:null, stock:17, rating:4.7, reviews:158, added:2,
     tag:"5-panel, crushable, quick-dry. One size.",
     desc:"A five-panel cap designed to be sat on, stuffed and sweated in. Quick-dry twill, a soft unstructured crown and an adjustable strap mean one size genuinely fits most. Packs flat without losing shape.",
     specs:[["Style","5-panel, unstructured"],["Material","Quick-dry cotton twill"],["Fit","Adjustable 54–60 cm"],["Weight","85 g"],["Warranty","1 year"]],
-    images:[U("photo-1588850561407-ed78c282e89b"), U("photo-1521369909029-2afed882baee")] },
+    images:[U("photo-1521369909029-2afed882baee"), U("photo-1554929033-da0fa155d2e7")] },
   { id:"tech-pouch", name:"NOMAD Tech Pouch", cat:"Travel Accessories", price:299000, old:349000, badge:"Sale",
     colors:["Black","Olive"], sizes:null, stock:14, rating:4.8, reviews:276, added:1,
     tag:"The charger-to-cable home base for any bag.",
     desc:"A structured pouch with origami-style pockets that fit chargers, dongles, SSDs and two phones. It stands open on tray tables and zips shut into a brick that slides into any bag's front pocket.",
     specs:[["Size","22 × 14 × 8 cm"],["Weight","310 g"],["Material","Ballistic-weave shell, recycled lining"],["Fits","65W charger, cables, SSD, 2 phones"],["Warranty","1 year"]],
-    images:[U("photo-1498049794561-7780e7231661"), U("photo-1614179689702-355944cd0918")] },
+    images:[U("photo-1764909262009-3dcd5691185c"), U("photo-1675668409245-955188b96bf6")] },
 ];
 
 const CATS = [
   { name:"Bags", desc:"Daypacks & slings", img:U("photo-1553062407-98eeb64c6a62"), count:"2 products" },
-  { name:"Travel Accessories", desc:"Organize everything", img:U("photo-1591561954557-26941169b49e"), count:"3 products" },
-  { name:"Apparel", desc:"Wear on the move", img:U("photo-1591047139829-d91aecb6caea"), count:"2 products" },
+  { name:"Travel Accessories", desc:"Organize everything", img:U("photo-1488646953014-85cb44e25828"), count:"3 products" },
+  { name:"Apparel", desc:"Wear on the move", img:U("photo-1541635930383-c21a3eab7075"), count:"2 products" },
   { name:"Everyday Essentials", desc:"Carry daily", img:U("photo-1602143407151-7111542de6e8"), count:"1 product" },
 ];
 
