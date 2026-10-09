@@ -237,16 +237,16 @@ function renderHome(){
         <a href="#/" onclick="document.getElementById('kit').scrollIntoView({behavior:'smooth'});return false;" class="btn btn-ghost" style="border-color:#3A4A42;color:#EDE8DC">BUILD YOUR KIT</a>
       </div>
       <div class="hero-proof">
-        <div><strong>4.8/5</strong>12k+ verified reviews</div>
+        <div><strong>4.8/5</strong>average product rating</div>
         <div><strong>2-yr</strong>warranty included</div>
         <div><strong>30-day</strong>free returns</div>
       </div>
     </div>
     <div class="hero-media">
-      ${imgTag(U("photo-1503220317375-aaad61436b1b"),"hero","Traveler with NOMAD gear")}
+      ${imgTag("https://images.unsplash.com/photo-1491637639811-60e2756cc1c7?q=80&w=1600&auto=format&fit=crop","hero","NOMAD Daypack resting on a trail in soft natural light")}
       <div class="hero-card">
-        ${imgTag(PRODUCTS[0].images[0],"daypack-24","Daypack")}
-        <div><div class="t">Daypack 24L — Sand</div><div class="s">★★★★★ 4.9 · 412 reviews</div></div>
+        ${imgTag(PRODUCTS[0].images[0],"daypack-24","NOMAD Daypack 24L")}
+        <div class="hc-text"><div class="t">NOMAD Daypack 24L</div><div class="s">★★★★★ 4.9 · 412 reviews</div></div>
         <span class="p">${rp(649000)}</span>
       </div>
     </div>
@@ -283,7 +283,7 @@ function renderHome(){
   </section>
 
   <section class="section">
-    <div class="sec-head"><div><h2>Best Sellers</h2><p>Ranked by verified reviews across 12,000+ journeys.</p></div><a class="link-arrow" href="#/shop?sort=rating">Shop top rated →</a></div>
+    <div class="sec-head"><div><h2>Best Sellers</h2><p>Community favorites in this demo catalog, ranked by product rating.</p></div><a class="link-arrow" href="#/shop?sort=rating">Shop top rated →</a></div>
     <div class="grid grid-4">${best.map(productCard).join("")}</div>
   </section>
 
@@ -295,13 +295,13 @@ function renderHome(){
   </section>
 
   <section class="section" id="reviews">
-    <div class="sec-head"><div><h2>Carried Everywhere</h2><p>Real notes from weekend escapes, work trips and everything between.</p></div></div>
+    <div class="sec-head"><div><h2>Carried Everywhere</h2><p>Illustrative field notes for this demo catalog — weekend escapes, work trips and everything between.</p></div></div>
     <div class="rev-grid">
       ${[
         ["NP","Nadya P. · Jakarta","Weekend Escape Kit","Took the Daypack 24L to Bandung for 3 days — laptop, cubes, jacket, all fit and it still slides under the train seat. Stitching feels indestructible.",5],
         ["BA","Bimo A. · Bandung","Trail Sling","The sling is the first bag I don't notice wearing. Passport, phone and power bank exactly where I expect. Bought a second one for my brother.",5],
         ["SL","Sarah L. · Surabaya","Rain Jacket + Bottle","Got caught in a proper downpour in Bromo. Jacket beaded everything off and packed into its own pocket after. The bottle survived being dropped on rocks — twice.",4],
-      ].map(r=>`<div class="rev"><div class="stars">${stars(r[4])}</div><p>“${r[3]}”</p><div class="rev-who"><div class="avatar">${r[0]}</div><div><b>${r[1]}</b><span>Verified buyer · ${r[2]}</span></div></div></div>`).join("")}
+      ].map(r=>`<div class="rev"><div class="stars">${stars(r[4])}</div><p>“${r[3]}”</p><div class="rev-who"><div class="avatar">${r[0]}</div><div><b>${r[1]}</b><span>Sample review · ${r[2]}</span></div></div>`).join("")}
     </div>
   </section>
 
@@ -313,7 +313,7 @@ function renderHome(){
         <h2>Gear that disappears into the journey.</h2>
         <p>“We believe the best travel gear disappears into the journey — light enough to carry, reliable enough to trust, and considered enough to keep.”</p>
         <p class="muted small">Every NOMAD piece starts from one question: what would you still pack on your tenth trip? If it doesn't earn its grams, it doesn't ship. Recycled shells, honest specs, repairs before replacements.</p>
-        <div class="story-stats"><div><strong>38k+</strong><span>travelers equipped</span></div><div><strong>62%</strong><span>recycled materials</span></div><div><strong>4.8★</strong><span>average rating</span></div></div>
+        <div class="story-stats"><div><strong>8</strong><span>considered essentials</span></div><div><strong>4</strong><span>trip-ready kits</span></div><div><strong>4.8★</strong><span>average product rating</span></div></div>
       </div>
     </div>
     <div class="news">
@@ -499,7 +499,7 @@ function paintTab(k,pid){
   if(k==="d") el.innerHTML=`<p>${p.desc}</p><p class="muted small">Designed in Jakarta · Responsibly made · Repair program available.</p>`;
   if(k==="s") el.innerHTML=`<table class="spec-table">${p.specs.map(s=>`<tr><td>${s[0]}</td><td><b>${s[1]}</b></td></tr>`).join("")}</table>`;
   if(k==="r") el.innerHTML=`<ul><li>Ships in 24h from Jakarta. Regular ${rp(18000)} (free over ${rp(500000)}), Express ${rp(35000)}, Same Day ${rp(50000)}.</li><li>30-day free returns — unused, tags on.</li><li>2-year warranty on stitching, zips & hardware.</li></ul>`;
-  if(k==="v") el.innerHTML=[["Rizky","Jakarta","Fits my whole weekend. Quality rivals brands twice the price.",5],["Anya","Bali","Bought for a work trip, now use it daily. Zips feel premium.",5]].map(r=>`<div class="rev" style="margin-bottom:10px"><div class="stars">${stars(r[3])}</div><p>“${r[2]}”</p><b class="small">${r[0]} · ${r[1]} · <span class="muted">Verified buyer</span></b></div>`).join("");
+  if(k==="v") el.innerHTML=[["Rizky","Jakarta","Fits my whole weekend. Quality rivals brands twice the price.",5],["Anya","Bali","Bought for a work trip, now use it daily. Zips feel premium.",5]].map(r=>`<div class="rev" style="margin-bottom:10px"><div class="stars">${stars(r[3])}</div><p>“${r[2]}”</p><b class="small">${r[0]} · ${r[1]} · <span class="muted">Sample review</span></b></div>`).join("");
 }
 
 /* ---------- CART PAGE ---------- */
