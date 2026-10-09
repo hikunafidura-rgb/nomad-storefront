@@ -10,7 +10,7 @@ Premium travel-lifestyle e-commerce (frontend-only, no build step, no backend) f
 
 ## Features
 - Homepage editorial: hero, featured, categories, Build Your Kit, best sellers, banner, reviews, story, newsletter.
-- Catalog (8 products): live search, category / price / color / availability filters, 5 sort modes, count, loading + empty states.
+- Catalog (8 products): live search, category / price / color / availability filters (In stock = stock > 0, Low ≤ 8), 5 sort modes, count, loading + empty states.
 - Product detail: gallery, rating, stock badge, color/size variants, qty capped at stock, tabs, related, recently viewed.
 - Bag drawer + page: qty steppers, remove, subtotal. Persists in `localStorage`.
 - 4-step checkout: validated info form → shipping (Regular free over Rp500rb / Express / Same Day, total updates instantly) → 5 simulated payments → review with edit links → `#NMD-xxxxxx` receipt.
@@ -23,7 +23,7 @@ Search "bottle" → filter Apparel + Low stock → open Rain Jacket → pick siz
 
 ## Limitations (by design, per challenge brief)
 - Payment & shipping are simulations; no real gateway, courier, or backend.
-- Orders/cart/wishlist live in this browser's `localStorage` (session-scoped, per device).
+- Orders/cart/wishlist live in this browser's `localStorage` (session-scoped, per device); corrupt entries are ignored, double-submit is guarded.
 - One coupon per order; KIT5 applies to the whole bag, not kit items only.
 - Ratings, reviews, prices, stock, photos are dummy/demo data (Unsplash with picsum fallback).
 - Same-Day courier copy is demo flavor text.

@@ -1,8 +1,8 @@
 /* NOMAD — frontend-only e-commerce. No build, no backend. */
 const U = (id) => `https://images.unsplash.com/${id}?q=80&w=900&auto=format&fit=crop`;
 const FALLBACK = (seed) => `https://picsum.photos/seed/${seed}/800/800`;
-const imgTag = (src, seed, alt, cls="") =>
-  `<img ${cls?`class="${cls}"`:""} src="${src}" alt="${alt.replace(/"/g,"")}" loading="lazy" onerror="this.onerror=null;this.src='${FALLBACK(seed)}'" />`;
+const imgTag = (src, seed, alt, cls="", eager=false) =>
+  `<img ${cls?`class="${cls}"`:""} src="${src}" alt="${alt.replace(/"/g,"")}" loading="${eager?"eager":"lazy"}"${eager?' fetchpriority="high"':""} onerror="this.onerror=null;this.src='${FALLBACK(seed)}'" />`;
 
 const PRODUCTS = [
   { id:"daypack-24", name:"NOMAD Daypack 24L", cat:"Bags", price:649000, old:799000, badge:"Best Seller",
@@ -94,7 +94,7 @@ const store = {
   get:(k,f)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):f }catch{ return f } },
   set:(k,v)=>localStorage.setItem(k,JSON.stringify(v))
 };
-const getCart=()=>store.get("nomad_cart",[]);
+const getCart=()=>store.get("nomad_cart",[]).filter(i=>i&&byId(i.pid)&&Number.isInteger(i.qty)&&i.qty>0);
 const setCart=(c)=>{store.set("nomad_cart",c);updateBadges();renderDrawer();};
 const getWish=()=>store.get("nomad_wish",[]);
 const setWish=(w)=>{store.set("nomad_wish",w);updateBadges();};
@@ -171,7 +171,7 @@ function renderDrawer(){
   const t=totals();
   foot.innerHTML=`
     <div class="kv"><span>Subtotal</span><b>${rp(t.sub)}</b></div>
-    <p class="small muted" style="margin:6px 0 12px">Shipping calculated at checkout${t.sub>=FREE_SHIP_THRESHOLD?" · Regular ships free 🎉":""}</p>
+    <p class="small muted" style="margin:6px 0 12px">Shipping calculated at checkout${(t.sub-t.disc)>=FREE_SHIP_THRESHOLD?" · Regular ships free 🎉":""}</p>
     <a href="#/cart" class="btn btn-ghost btn-block" onclick="closeCart()">VIEW BAG</a>
     <a href="#/checkout" class="btn btn-dark btn-block" style="margin-top:8px" onclick="closeCart()">PROCEED TO CHECKOUT</a>`;
 }
@@ -225,7 +225,8 @@ function productCard(p){
 /* ---------- HOME ---------- */
 function renderHome(){
   const feat=[byId("daypack-24"),byId("insulated-bottle"),byId("travel-organizer"),byId("rain-jacket")];
-  const best=[...PRODUCTS].sort((a,b)=>b.reviews-a.reviews).slice(0,4);
+  const featIds=new Set(feat.map(p=>p.id));
+  const best=[...PRODUCTS].filter(p=>!featIds.has(p.id)).sort((a,b)=>b.reviews-a.reviews).slice(0,4);
   return `
   <section class="hero">
     <div class="hero-copy">
@@ -243,12 +244,12 @@ function renderHome(){
       </div>
     </div>
     <div class="hero-media">
-      ${imgTag("https://images.unsplash.com/photo-1491637639811-60e2756cc1c7?q=80&w=1600&auto=format&fit=crop","hero","NOMAD Daypack resting on a trail in soft natural light")}
-      <div class="hero-card">
+      ${imgTag("https://images.unsplash.com/photo-1491637639811-60e2756cc1c7?q=80&w=1600&auto=format&fit=crop","hero","NOMAD Daypack resting on a trail in soft natural light","",true)}
+      <a class="hero-card" href="#/product/daypack-24" aria-label="View NOMAD Daypack 24L">
         ${imgTag(PRODUCTS[0].images[0],"daypack-24","NOMAD Daypack 24L")}
         <div class="hc-text"><div class="t">NOMAD Daypack 24L</div><div class="s">★★★★★ 4.9 · 412 reviews</div></div>
         <span class="p">${rp(649000)}</span>
-      </div>
+      </a>
     </div>
   </section>
   <div class="trust"><div class="trust-inner">
@@ -260,7 +261,7 @@ function renderHome(){
     <div class="grid grid-4">${feat.map(productCard).join("")}</div>
   </section>
 
-  <section class="section">
+  <section class="section" id="collections">
     <div class="sec-head"><div><h2>Shop by Category</h2><p>Start with the system you need, then build around it.</p></div></div>
     <div class="cat-grid">${CATS.map(c=>`
       <a class="cat-tile" href="#/shop?cat=${encodeURIComponent(c.name)}">
@@ -373,7 +374,7 @@ function renderShop(q){
       <div class="f-group"><h3>Color</h3>${["Black","Sand","Olive","Silver"].map(c=>`
         <label class="f-check"><input type="checkbox" data-fcolor="${c}"/> <span class="dot" style="background:${COLOR_HEX[c]};width:14px;height:14px"></span> ${c}</label>`).join("")}</div>
       <div class="f-group"><h3>Availability</h3>
-        <select class="f-select" id="fAvail"><option value="all">All</option><option value="ready">In stock (9+)</option><option value="low">Low stock (≤ 8)</option></select></div>
+        <select class="f-select" id="fAvail"><option value="all">All</option><option value="ready">In stock</option><option value="low">Low stock (≤ 8)</option></select></div>
       <button class="btn btn-ghost btn-block btn-sm" onclick="clearFilters()">CLEAR FILTERS</button>
     </aside>
     <div>
@@ -397,7 +398,7 @@ function filteredProducts(){
   if(s.price==="under250") r=r.filter(p=>p.price<250000);
   if(s.price==="250to400") r=r.filter(p=>p.price>=250000&&p.price<=400000);
   if(s.price==="over400") r=r.filter(p=>p.price>400000);
-  if(s.avail==="ready") r=r.filter(p=>p.stock>8);
+  if(s.avail==="ready") r=r.filter(p=>p.stock>0);
   if(s.avail==="low") r=r.filter(p=>p.stock<=8);
   if(s.sort==="price-asc") r.sort((a,b)=>a.price-b.price);
   if(s.sort==="price-desc") r.sort((a,b)=>b.price-a.price);
@@ -511,7 +512,7 @@ function renderCart(){
   if(!cart.length) return `<div class="page center" style="max-width:560px"><h1>Your bag is waiting.</h1><p class="sub">Explore our essentials and start building your journey.</p><a href="#/shop" class="btn btn-dark">SHOP COLLECTION</a>
     <div style="margin-top:36px;text-align:left"><h3 style="font-family:var(--font-ed)">Popular right now</h3><div class="grid grid-3" style="grid-template-columns:repeat(2,1fr)">${[byId("daypack-24"),byId("insulated-bottle")].map(productCard).join("")}</div></div></div>`;
   const t=totals();
-  return `<div class="page"><h1>Your Bag</h1><p class="sub">${cartQty()} items · Regular shipping free over ${rp(FREE_SHIP_THRESHOLD)}</p>
+  return `<div class="page"><h1>Your Bag</h1><p class="sub">${cartQty()} items · Free Regular shipping Rp500.000+</p>
   <div class="cart-layout"><div class="cart-lines">
     ${cart.map((i,ix)=>{const p=byId(i.pid);return `<div class="cart-line">
       ${imgTag(p.images[0],p.id,p.name)}
@@ -525,7 +526,7 @@ function renderCart(){
     <div class="kv"><span>Subtotal</span><b>${rp(t.sub)}</b></div>
     ${t.disc?`<div class="kv kit-save"><span>Coupon ${getCoupon()}</span><span>− ${rp(t.disc)}</span></div>`:""}
     <div class="kv"><span>Shipping</span><span class="muted">At checkout</span></div>
-    <div class="kv total"><span>Total</span><span>${rp(t.sub-t.disc)}</span></div>
+    <div class="kv total"><span>Total <span class="small muted">excl. shipping</span></span><span>${rp(t.sub-t.disc)}</span></div>
     <div class="coupon-row"><input id="cpn" placeholder="Coupon code" value="${getCoupon()||""}" /><button class="btn btn-ghost btn-sm" onclick="applyCoupon()">Apply</button></div>
     <div class="coupon-msg" id="cpnMsg"></div>
     <a href="#/checkout" class="btn btn-dark btn-block">PROCEED TO CHECKOUT</a>
