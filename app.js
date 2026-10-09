@@ -83,7 +83,22 @@ const PAYMENTS = [
 ];
 const STATUSES = ["Pesanan Dibuat","Pembayaran Berhasil","Pesanan Diproses","Diserahkan ke Kurir","Dalam Pengiriman","Pesanan Sampai"];
 const STATUS_DESC = ["We received your order.","Your simulated payment cleared.","We are packing your gear.","Handed to the courier partner.","On the way to your address.","Delivered. Enjoy the journey."];
-const COUPONS = { "NOMAD10":0.10, "KIT5":0.05 };
+const COUPONS = { "NOMAD10":0.10 };
+const BUNDLE_RATE = 0.05;
+// Complete-kit sets detected from cart contents (greedy, shared units consumed once).
+// Recomputed from product data on every call — never trusted from UI text.
+function bundleDiscount(cart){
+  const pool={}; cart.forEach(i=>{pool[i.pid]=(pool[i.pid]||0)+i.qty;});
+  let disc=0;
+  Object.values(KITS).forEach(k=>{
+    let sets=Infinity; k.ids.forEach(id=>{sets=Math.min(sets,pool[id]||0);});
+    if(sets>0&&sets!==Infinity){
+      disc+=Math.round(k.ids.reduce((s,id)=>s+byId(id).price,0)*BUNDLE_RATE)*sets;
+      k.ids.forEach(id=>{pool[id]-=sets;});
+    }
+  });
+  return disc;
+}
 const FREE_SHIP_THRESHOLD = 500000;
 
 const COLOR_HEX = { Black:"#202421", Sand:"#D8D1C5", Olive:"#5A624E", Silver:"#B9BEC2" };
@@ -124,12 +139,15 @@ function updateBadges(){
 function totals(shipId="regular", coupon=getCoupon()){
   const cart=getCart();
   const sub=cart.reduce((s,i)=>s+byId(i.pid).price*i.qty,0);
-  const disc=coupon&&COUPONS[coupon]?Math.round(sub*COUPONS[coupon]):0;
-  const after=sub-disc;
+  const couponOn=coupon&&COUPONS[coupon]?coupon:null;
+  const disc=couponOn?Math.round(sub*COUPONS[couponOn]):0;
+  const bundle=couponOn?0:bundleDiscount(cart); // never stacked with a coupon
+  const after=sub-disc-bundle;
   let ship=0;
   if(cart.length){ const m=SHIPPING.find(s=>s.id===shipId); ship=m.price; if(shipId==="regular"&&after>=FREE_SHIP_THRESHOLD) ship=0; }
-  return { sub, disc, ship, total:after+ship };
+  return { sub, disc, bundle, ship, total:after+ship };
 }
+const bundleLine=(t)=>t.bundle?`<div class="kv kit-save"><span>Bundle savings (5%)</span><span>− ${rp(t.bundle)}</span></div>`:"";
 function addToCart(pid, color, size, qty=1, openDrawer=true){
   const p=byId(pid); if(!p) return;
   color=color||p.colors[0]; size=size||(p.sizes?p.sizes[0]:null);
@@ -171,7 +189,7 @@ function renderDrawer(){
   const t=totals();
   foot.innerHTML=`
     <div class="kv"><span>Subtotal</span><b>${rp(t.sub)}</b></div>
-    <p class="small muted" style="margin:6px 0 12px">Shipping calculated at checkout${(t.sub-t.disc)>=FREE_SHIP_THRESHOLD?" · Regular ships free 🎉":""}</p>
+    <p class="small muted" style="margin:6px 0 12px">Shipping calculated at checkout${(t.sub-t.disc-t.bundle)>=FREE_SHIP_THRESHOLD?" · Regular ships free 🎉":""}</p>
     <a href="#/cart" class="btn btn-ghost btn-block" onclick="closeCart()">VIEW BAG</a>
     <a href="#/checkout" class="btn btn-dark btn-block" style="margin-top:8px" onclick="closeCart()">PROCEED TO CHECKOUT</a>`;
 }
@@ -342,10 +360,11 @@ function mountKit(){
     document.getElementById("kitSummary").innerHTML=`
       <h3>${k.label}</h3><p class="small muted" style="margin:0 0 12px">${k.desc}</p>
       ${items.map(p=>`<div class="kv"><span>${p.name}</span><span>${rp(p.price)}</span></div>`).join("")}
-      <div class="kv kit-save"><span>Bundle perk · code KIT5</span><span>− ${rp(save)}</span></div>
+      <div class="kv kit-save"><span>Bundle perk · auto 5% off</span><span>− ${rp(save)}</span></div>
       <div class="kv total"><span>Total</span><span>${rp(total-save)}</span></div>
-      <button class="btn btn-dark btn-block" style="margin-top:14px" onclick="addKit('${key}')">ADD ALL TO BAG + KIT5</button>
-      <p class="small muted center" style="margin:10px 0 0">Free Regular shipping unlocked 🎉</p>`;
+      <button class="btn btn-dark btn-block" style="margin-top:14px" onclick="addKit('${key}')">ADD ALL TO BAG</button>
+      <p class="small muted center" style="margin:10px 0 0">5% bundle perk applies automatically · no code needed</p>
+      <p class="small muted center" style="margin:6px 0 0">Free Regular shipping unlocked 🎉</p>`;
   };
   tabs.forEach(t=>t.onclick=()=>paint(t.dataset.kit));
   paint("weekend");
@@ -353,8 +372,8 @@ function mountKit(){
 window.addKit=(key)=>{
   const k=KITS[key]; let n=0;
   k.ids.forEach(id=>{const p=byId(id);if(addToCart(id,p.colors[0],p.sizes?p.sizes[0]:null,1,false))n++;});
-  if(!getCoupon()){ store.set("nomad_coupon","KIT5"); toast(`${n} items added · KIT5 −5% applied`,"ok"); }
-  else toast(`${n} items added · kept coupon ${getCoupon()} (one coupon per order)`);
+  if(getCoupon()) toast(`${n} items added · coupon ${getCoupon()} kept, bundle perk paused`);
+  else toast(`${n} items added · 5% bundle perk applied`,"ok");
   openCart();
 };
 
@@ -524,21 +543,21 @@ function renderCart(){
   </div>
   <div class="summary"><h3 style="margin:0 0 4px;font-family:var(--font-ed);font-size:22px">Summary</h3>
     <div class="kv"><span>Subtotal</span><b>${rp(t.sub)}</b></div>
-    ${t.disc?`<div class="kv kit-save"><span>Coupon ${getCoupon()}</span><span>− ${rp(t.disc)}</span></div>`:""}
+    ${t.disc?`<div class="kv kit-save"><span>Coupon ${getCoupon()}</span><span>− ${rp(t.disc)}</span></div>`:""}${bundleLine(t)}
     <div class="kv"><span>Shipping</span><span class="muted">At checkout</span></div>
-    <div class="kv total"><span>Total <span class="small muted">excl. shipping</span></span><span>${rp(t.sub-t.disc)}</span></div>
+    <div class="kv total"><span>Total <span class="small muted">excl. shipping</span></span><span>${rp(t.sub-t.disc-t.bundle)}</span></div>
     <div class="coupon-row"><input id="cpn" placeholder="Coupon code" value="${getCoupon()||""}" /><button class="btn btn-ghost btn-sm" onclick="applyCoupon()">Apply</button></div>
     <div class="coupon-msg" id="cpnMsg"></div>
     <a href="#/checkout" class="btn btn-dark btn-block">PROCEED TO CHECKOUT</a>
-    <p class="small muted center">Try <b>NOMAD10</b> for 10% off or <b>KIT5</b> for 5% off</p>
+    <p class="small muted center">Try <b>NOMAD10</b> for 10% off · complete kits save 5% automatically</p>
   </div></div></div>`;
 }
 window.applyCoupon=()=>{
   const v=(document.getElementById("cpn").value||"").trim().toUpperCase();
   const m=document.getElementById("cpnMsg");
   if(!v){store.set("nomad_coupon",null);render();return;}
-  if(COUPONS[v]){store.set("nomad_coupon",v);toast(`Coupon applied — ${Math.round(COUPONS[v]*100)}% off`,"ok");render();}
-  else{m.textContent="Invalid coupon code. Try NOMAD10 or KIT5.";m.className="coupon-msg err";}
+  if(COUPONS[v]){store.set("nomad_coupon",v);toast(`Coupon applied — ${Math.round(COUPONS[v]*100)}% off (bundle perk paused)`,"ok");render();}
+  else{m.textContent="Invalid coupon code. Try NOMAD10.";m.className="coupon-msg err";}
 };
 
 /* ---------- WISHLIST ---------- */
@@ -571,7 +590,7 @@ function renderCheckout(){
     <div class="summary"><h3 style="font-family:var(--font-ed);font-size:20px;margin:0 0 10px">Order Summary</h3>
       ${getCart().map(i=>{const p=byId(i.pid);return `<div class="kv"><span>${p.name} <span class="muted">× ${i.qty}</span><br/><span class="small muted">${i.color}${i.size?" · "+i.size:""}</span></span><b>${rp(p.price*i.qty)}</b></div>`;}).join("")}
       <div class="kv"><span>Subtotal</span><span>${rp(t.sub)}</span></div>
-      ${t.disc?`<div class="kv kit-save"><span>Discount (${getCoupon()})</span><span>− ${rp(t.disc)}</span></div>`:""}
+      ${t.disc?`<div class="kv kit-save"><span>Discount (${getCoupon()})</span><span>− ${rp(t.disc)}</span></div>`:""}${bundleLine(t)}
       <div class="kv"><span>Shipping (${SHIPPING.find(s=>s.id===co.ship).name})</span><span>${t.ship===0?"FREE":rp(t.ship)}</span></div>
       <div class="kv total"><span>Total</span><span>${rp(t.total)}</span></div>
     </div></div></div>`;
@@ -590,7 +609,7 @@ function bindCheckout(){
     m.innerHTML=`<div class="card"><h3>02 — Delivery Method</h3>
       ${SHIPPING.map(s=>{let price=s.price;const t0=totals(s.id);if(t0.ship===0&&s.id==="regular")price=0;return `
       <label class="ship-opt ${co.ship===s.id?"active":""}"><input type="radio" name="ship" ${co.ship===s.id?"checked":""} onchange="setShip('${s.id}')" />
-      <div class="grow"><b>${s.name} <span class="small muted">· ${s.eta}</span></b><small>${s.desc}${s.id==="regular"&&price===0?" — FREE over Rp500rb":""}</small></div>
+      <div class="grow"><b>${s.name} <span class="small muted">· ${s.eta}</span></b><small>${s.desc}${s.id==="regular"&&price===0?" — FREE Rp500.000+":""}</small></div>
       <span class="ship-price">${price===0?"FREE":rp(s.price)}</span></label>`;}).join("")}
       <p class="small muted">* Same Day simulated — Jabodetabek demo only. Couriers: JNE · J&T · SiCepat · AnterAja.</p>
       <div class="btn-row" style="margin-top:8px"><button class="btn btn-ghost" onclick="co.step=1;render()">← BACK</button><button class="btn btn-dark" style="flex:1" onclick="co.step=3;render()">CONTINUE TO PAYMENT →</button></div></div>`;
@@ -605,7 +624,7 @@ function bindCheckout(){
     m.innerHTML=`<div class="card"><h3>04 — Review & Place Order</h3>
       ${getCart().map(i=>{const p=byId(i.pid);return `<div class="kv"><span><b>${p.name}</b><br/><span class="small muted">${i.color}${i.size?" · "+i.size:""} · Qty ${i.qty}</span></span><b>${rp(p.price*i.qty)}</b></div>`;}).join("")}
       <div class="kv"><span>Subtotal</span><span>${rp(t.sub)}</span></div>
-      ${t.disc?`<div class="kv kit-save"><span>Discount</span><span>− ${rp(t.disc)}</span></div>`:""}
+      ${t.disc?`<div class="kv kit-save"><span>Discount</span><span>− ${rp(t.disc)}</span></div>`:""}${bundleLine(t)}
       <div class="kv"><span>Shipping · ${sh.name} (${sh.eta}) <button class="cl-remove" onclick="co.step=2;render()">Edit</button></span><span>${t.ship===0?"FREE":rp(t.ship)}</span></div>
       <div class="kv"><span>Payment · ${py.name} <button class="cl-remove" onclick="co.step=3;render()">Edit</button></span><span>Simulated</span></div>
       <div class="kv"><span>Ship to <button class="cl-remove" onclick="co.step=1;render()">Edit</button></span><span style="text-align:right;max-width:55%">${esc(v.name)}<br/><span class="muted">${esc(v.address)}, ${esc(v.city)} ${esc(v.postal)}<br/>${esc(v.phone)}</span></span></div>
@@ -639,7 +658,7 @@ window.placeOrder=()=>{
   const t=totals(co.ship);
   const id="#NMD-"+Math.floor(100000+Math.random()*900000);
   const order={ id, items:getCart(), info:{...co.info}, ship:co.ship, pay:co.pay,
-    sub:t.sub, disc:t.disc, shipCost:t.ship, total:t.total, coupon:getCoupon(),
+    sub:t.sub, disc:t.disc, bundle:t.bundle, shipCost:t.ship, total:t.total, coupon:getCoupon(),
     status:2, created:new Date().toISOString(), eta: co.ship==="sameday"?"Today":co.ship==="express"?"1–2 business days":"3–5 business days" };
   saveOrder(order); setCart([]); store.set("nomad_coupon",null); co={step:1,info:co.info,ship:"express",pay:"qris"};
   go("#/order/"+encodeURIComponent(id));
@@ -656,7 +675,7 @@ function renderOrder(id){
     <h2 style="font-family:var(--font-ed)">${o.id}</h2></div>
     <div class="card"><h3>Items</h3>${o.items.map(i=>{const p=byId(i.pid);return `<div class="kv"><span>${p?p.name:i.pid} <span class="muted">× ${i.qty} · ${i.color}${i.size?" · "+i.size:""}</span></span><b>${p?rp(p.price*i.qty):""}</b></div>`;}).join("")}
       <div class="kv"><span>Subtotal</span><span>${rp(o.sub)}</span></div>
-      ${o.disc?`<div class="kv kit-save"><span>Discount ${o.coupon||""}</span><span>− ${rp(o.disc)}</span></div>`:""}
+      ${o.disc?`<div class="kv kit-save"><span>Discount ${o.coupon||""}</span><span>− ${rp(o.disc)}</span></div>`:""}${o.bundle?`<div class="kv kit-save"><span>Bundle savings (5%)</span><span>− ${rp(o.bundle)}</span></div>`:""}
       <div class="kv"><span>Shipping · ${sh.name}</span><span>${o.shipCost===0?"FREE":rp(o.shipCost)}</span></div>
       <div class="kv total"><span>Total paid</span><span>${rp(o.total)}</span></div></div>
     <div class="order-box">
@@ -723,4 +742,6 @@ document.getElementById("announceCoupon").onclick=()=>{store.set("nomad_coupon",
 document.addEventListener("keydown",(e)=>{if(e.key==="Escape"){closeCart();document.getElementById("payModal").classList.add("hidden");}});
 document.querySelectorAll("[data-scroll]").forEach(a=>a.addEventListener("click",()=>{const t=a.dataset.scroll;setTimeout(()=>{const el=document.getElementById(t);if(el)el.scrollIntoView({behavior:"smooth"});},80);document.getElementById("mobileMenu").classList.add("hidden");}));
 
-updateBadges(); renderDrawer(); render();
+updateBadges(); renderDrawer();
+if(getCoupon()==="KIT5") store.set("nomad_coupon",null); // retired: bundle perk is automatic now
+render();

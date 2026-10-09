@@ -406,6 +406,9 @@ select.f-select{width:100%;border:1px solid var(--line);border-radius:10px;paddi
   .wrap{padding:0 16px}
 }
 :focus-visible{outline:2px solid var(--terra);outline-offset:2px}
+@media (hover:none){
+  .quick-add{position:static;display:block;width:calc(100% - 24px);margin:0 12px 12px;opacity:1;transform:none}
+}
 @media (prefers-reduced-motion: reduce){
   html{scroll-behavior:auto}
   *,*::before,*::after{animation:none!important;transition:none!important}
