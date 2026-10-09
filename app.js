@@ -338,7 +338,7 @@ function renderHome(){
         ["NP","Nadya P. · Jakarta","Weekend Escape Kit","Took the Daypack 24L to Bandung for 3 days — laptop, cubes, jacket, all fit and it still slides under the train seat. Stitching feels indestructible.",5],
         ["BA","Bimo A. · Bandung","Trail Sling","The sling is the first bag I don't notice wearing. Passport, phone and power bank exactly where I expect. Bought a second one for my brother.",5],
         ["SL","Sarah L. · Surabaya","Rain Jacket + Bottle","Got caught in a proper downpour in Bromo. Jacket beaded everything off and packed into its own pocket after. The bottle survived being dropped on rocks — twice.",4],
-      ].map(r=>`<div class="rev"><div class="stars">${stars(r[4])}</div><p>“${r[3]}”</p><div class="rev-who"><div class="avatar">${r[0]}</div><div><b>${r[1]}</b><span>Sample review · ${r[2]}</span></div></div>`).join("")}
+      ].map(r=>`<div class="rev"><div class="stars">${stars(r[4])}</div><p>“${r[3]}”</p><div class="rev-who"><div class="avatar">${r[0]}</div><div class="rev-author"><b>${r[1]}</b><span>Sample review · ${r[2]}</span></div></div></div>`).join("")}
     </div>
   </section>
 
