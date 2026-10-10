@@ -104,6 +104,55 @@ function bundleDiscount(cart){
 }
 const FREE_SHIP_THRESHOLD = 500000;
 
+const TRAVEL_BADGES = {
+  "daypack-24": ["Cabin Approved", "16″ Laptop Sleeve", "PFC-Free DWR"],
+  "trail-sling": ["5L Crossbody", "Magnetic Quick-Buckle", "Cordura® Woven"],
+  "travel-organizer": ["Lays Flat 180°", "Passport + 6 Cards", "Vegan Leather Touch"],
+  "insulated-bottle": ["Cold 24h / Hot 12h", "18/8 Pro Stainless", "Zero-Leak Seal"],
+  "rain-jacket": ["10,000 mm Waterproof", "Packs into Pocket", "Taped Seams"],
+  "packing-cubes": ["Set of 3 Compression", "30% Volume Saver", "Mesh Visibility"],
+  "travel-cap": ["Crushable & Packable", "Quick-Dry Twill", "54–60 cm Adjustable"],
+  "tech-pouch": ["Origami Pockets", "Stands Upright on Tray", "65W Charger Ready"]
+};
+
+const PAIRINGS = {
+  "daypack-24": { pairId:"travel-organizer", tag:"Travel System Pairing", reason:"Slips flat into the main compartment to keep cables and passport organized in transit." },
+  "trail-sling": { pairId:"insulated-bottle", tag:"Hydration Pairing", reason:"Carry hands-free while keeping cold hydration within arm's reach." },
+  "travel-organizer": { pairId:"tech-pouch", tag:"Power & Cable Hub", reason:"Separate flat documents from chunky chargers, plugs, and international adapters." },
+  "insulated-bottle": { pairId:"daypack-24", tag:"Carry Companion", reason:"Engineered to slide securely into the 24L side pocket without rattles or falling out." },
+  "rain-jacket": { pairId:"daypack-24", tag:"All-Weather System", reason:"Packs into its own pocket and tucks right into the pack's top quick-access sleeve." },
+  "packing-cubes": { pairId:"daypack-24", tag:"One-Bag Packing System", reason:"All 3 compression cubes stack modularly inside the 24L main compartment." },
+  "travel-cap": { pairId:"trail-sling", tag:"City Explorer Duo", reason:"Crushes flat into the sling's rear slip pocket when the sun dips." },
+  "tech-pouch": { pairId:"travel-organizer", tag:"Digital Nomad System", reason:"Keep work power bricks and travel folios coordinated across flights and cafés." }
+};
+
+function renderFreeShippingBar(currentAmount){
+  const diff = FREE_SHIP_THRESHOLD - currentAmount;
+  const pct = Math.min(100, Math.max(0, Math.round((currentAmount / FREE_SHIP_THRESHOLD) * 100)));
+  const unlocked = diff <= 0;
+  return `
+    <div class="ship-progress-box">
+      <div class="ship-progress-text">
+        ${unlocked 
+          ? `<span>🎉 <b>Free Regular Shipping unlocked!</b></span>` 
+          : `<span>Add <b>${rp(diff)}</b> more for <b>Free Regular Shipping</b></span>`
+        }
+        <span class="ship-progress-pct">${pct}%</span>
+      </div>
+      <div class="ship-progress-track" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+        <div class="ship-progress-fill ${unlocked ? "unlocked" : ""}" style="width:${pct}%"></div>
+      </div>
+    </div>`;
+}
+
+window.copyText = (text, msg) => {
+  if(navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => toast(msg || "Copied to clipboard!", "ok")).catch(() => toast("Copied: " + text, "ok"));
+  } else {
+    toast(msg || "Copied to clipboard!", "ok");
+  }
+};
+
 const COLOR_HEX = { Black:"#202421", Sand:"#D8D1C5", Olive:"#5A624E", Silver:"#B9BEC2" };
 const byId = (id) => PRODUCTS.find(p=>p.id===id);
 const rp = (n) => "Rp" + Math.round(n).toLocaleString("id-ID");
@@ -210,6 +259,7 @@ function renderDrawer(){
 
   foot.innerHTML=`
     <div class="drawer-summary">
+      ${renderFreeShippingBar(t.sub-t.disc-t.bundle)}
       <div class="drawer-subtotal">
         <span class="drawer-subtotal-label">Subtotal</span>
         <b class="drawer-subtotal-val">${rp(t.sub)}</b>
@@ -395,47 +445,133 @@ function renderHome(){
 }
 window.subscribe=(e)=>{e.preventDefault();const v=document.getElementById("newsEmail").value;document.getElementById("newsMsg").innerHTML=`<span class="news-ok">✓ You're in! First field notes land this Friday.</span>`;toast("Subscribed","ok");return false;};
 
+let currentKitKey = "weekend";
+let kitSelected = new Set(KITS["weekend"].ids);
+
 function mountKit(){
   const tabs=document.querySelectorAll(".kit-tab"); if(!tabs.length) return;
-  const paint=(key)=>{
-    tabs.forEach(t=>t.classList.toggle("active",t.dataset.kit===key));
-    const k=KITS[key];
-    const items=k.ids.map(byId);
-    const total=items.reduce((s,p)=>s+p.price,0);
-    const save=Math.round(total*0.05);
-    document.getElementById("kitItems").innerHTML=items.map(p=>`
-      <a href="#/product/${p.id}" class="kit-item">${imgTag(p.images[0],p.id,p.name)}
-        <div><div class="n">${p.name}</div><div class="v">${p.tag}</div><div class="pr">${rp(p.price)}</div></div>
-      </a>`).join("");
+  const paint=()=>{
+    tabs.forEach(t=>t.classList.toggle("active",t.dataset.kit===currentKitKey));
+    const k=KITS[currentKitKey];
+    const allItems=k.ids.map(byId);
+    const selectedCount=kitSelected.size;
+    const isFullKit=selectedCount===k.ids.length;
+
+    // render items list with custom checkbox toggle
+    document.getElementById("kitItems").innerHTML=allItems.map(p=>{
+      const isSel=kitSelected.has(p.id);
+      return `
+        <div class="kit-item ${isSel?"selected":"unselected"}" onclick="toggleKitItem('${p.id}')" role="checkbox" aria-checked="${isSel}" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleKitItem('${p.id}');}">
+          <span class="kit-checkbox" aria-hidden="true">${isSel?"✓":""}</span>
+          ${imgTag(p.images[0],p.id,p.name)}
+          <div class="kit-item-content">
+            <div class="n">${p.name}</div>
+            <div class="v">${p.tag}</div>
+            <div class="pr">${rp(p.price)}</div>
+            <a href="#/product/${p.id}" class="kit-item-link" onclick="event.stopPropagation()">View specs →</a>
+          </div>
+        </div>`;
+    }).join("");
+
+    // render kit summary
+    const selectedItems=allItems.filter(p=>kitSelected.has(p.id));
+    const sub=selectedItems.reduce((s,p)=>s+p.price,0);
+    const save=isFullKit?Math.round(sub*BUNDLE_RATE):0;
+    const net=sub-save;
+
     document.getElementById("kitSummary").innerHTML=`
-      <h3>${k.label}</h3><p class="small muted" style="margin:0 0 12px">${k.desc}</p>
-      ${items.map(p=>`<div class="kv"><span>${p.name}</span><span>${rp(p.price)}</span></div>`).join("")}
-      <div class="kv kit-save"><span>Bundle perk · auto 5% off</span><span>− ${rp(save)}</span></div>
-      <div class="kv total"><span>Total</span><span>${rp(total-save)}</span></div>
-      <button class="btn btn-dark btn-block" style="margin-top:14px" onclick="addKit('${key}')">ADD ALL TO BAG</button>
-      <p class="small muted center" style="margin:10px 0 0">5% bundle perk applies automatically · no code needed</p>
-      <p class="small muted center" style="margin:6px 0 0">Free Regular shipping unlocked 🎉</p>`;
+      <div class="kit-count-badge">${selectedCount} of ${k.ids.length} essentials selected</div>
+      <h3>${k.label}</h3>
+      <p class="small muted" style="margin:0 0 14px">${k.desc}</p>
+      ${allItems.map(p=>{
+        const isSel=kitSelected.has(p.id);
+        return `<div class="kv" style="${isSel?"":"opacity:.4;text-decoration:line-through"}">
+          <span>${p.name}${isSel?"":" (excluded)"}</span>
+          <span>${rp(p.price)}</span>
+        </div>`;
+      }).join("")}
+      ${isFullKit
+        ? `<div class="kv kit-save"><span>Bundle perk · auto 5% off</span><span>− ${rp(save)}</span></div>`
+        : selectedCount>0
+        ? `<p class="small muted" style="margin:10px 0;padding:8px 12px;background:#EDE8DC;border-radius:8px">💡 Select all 4 essentials to unlock <b>5% bundle perk</b></p>`
+        : ""
+      }
+      <div class="kv total"><span>Total</span><span>${rp(net)}</span></div>
+      ${selectedCount>0
+        ? `<button class="btn btn-dark btn-block" style="margin-top:14px" onclick="addSelectedKit()">ADD SELECTED (${selectedCount}) — ${rp(net)}</button>`
+        : `<button class="btn btn-dark btn-block" style="margin-top:14px" disabled>SELECT ESSENTIALS</button>`
+      }
+      <p class="small muted center" style="margin:10px 0 0">
+        ${isFullKit 
+          ? "5% bundle perk applies automatically · no code needed" 
+          : "Tap any item above to include or exclude from bundle"
+        }
+      </p>
+      ${net>=FREE_SHIP_THRESHOLD ? `<p class="small muted center" style="margin:6px 0 0">🎉 Free Regular shipping unlocked!</p>` : ""}`;
   };
-  tabs.forEach(t=>t.onclick=()=>paint(t.dataset.kit));
-  paint("weekend");
+
+  window.toggleKitItem=(pid)=>{
+    if(kitSelected.has(pid)) kitSelected.delete(pid);
+    else kitSelected.add(pid);
+    paint();
+  };
+
+  tabs.forEach(t=>t.onclick=()=>{
+    currentKitKey=t.dataset.kit;
+    kitSelected=new Set(KITS[currentKitKey].ids);
+    paint();
+  });
+
+  paint();
 }
-window.addKit=(key)=>{
-  const k=KITS[key]; let n=0;
-  k.ids.forEach(id=>{const p=byId(id);if(addToCart(id,p.colors[0],p.sizes?p.sizes[0]:null,1,false,true))n++;});
-  if(getCoupon()) toast(`${n} items added · coupon ${getCoupon()} kept, bundle perk paused`);
-  else toast(`${n} items added · 5% bundle perk applied`,"ok");
+
+window.addSelectedKit=()=>{
+  const k=KITS[currentKitKey];
+  const itemsToAdd=k.ids.filter(id=>kitSelected.has(id));
+  if(!itemsToAdd.length) return;
+  let n=0;
+  itemsToAdd.forEach(id=>{
+    const p=byId(id);
+    if(addToCart(id,p.colors[0],p.sizes?p.sizes[0]:null,1,false,true)) n++;
+  });
+  const isFull=kitSelected.size===k.ids.length;
+  if(getCoupon()) toast(`${n} items added · coupon ${getCoupon()} active, bundle perk paused`);
+  else if(isFull) toast(`${n} items added · 5% bundle perk applied`,"ok");
+  else toast(`${n} items added to bag`);
   openCart();
+};
+
+window.addKit=(key)=>{
+  currentKitKey=key;
+  kitSelected=new Set(KITS[key].ids);
+  window.addSelectedKit();
 };
 
 /* ---------- SHOP ---------- */
 let shopState={ q:"", cats:[], colors:[], price:"all", avail:"all", sort:"featured" };
 function renderShop(q){
   shopState={ q:q.get("q")||"", cats:q.get("cat")?[q.get("cat")]:[], colors:[], price:"all", avail:"all", sort:q.get("sort")||"featured" };
-  return `<div class="shop-head wrap"><h1>Shop All</h1><p>8 essentials · filter by trip, color and budget. Demo prices & stock — everything you see is buyable.</p></div>
+  const allCats=["All","Bags","Travel Accessories","Apparel","Everyday Essentials"];
+  const pillsHtml=`
+    <div class="shop-pills" id="shopPills" role="tablist" aria-label="Filter categories">
+      ${allCats.map(cat=>{
+        const isActive=cat==="All"?shopState.cats.length===0:(shopState.cats.length===1&&shopState.cats[0]===cat);
+        return `<button type="button" class="shop-pill ${isActive?"active":""}" onclick="selectCatPill('${cat}')">${cat}</button>`;
+      }).join("")}
+    </div>`;
+
+  return `<div class="shop-head wrap">
+    <h1>Shop All</h1>
+    <p>8 essentials · filter by trip, color and budget. Demo prices & stock — everything you see is buyable.</p>
+    ${pillsHtml}
+  </div>
   <div class="shop-layout">
     <aside class="filters">
       <h3>Search</h3>
-      <input class="f-search" id="fQ" placeholder="Search products…" value="${esc(shopState.q)}" />
+      <div class="f-search-wrap">
+        <input class="f-search" id="fQ" placeholder="Search products…" value="${esc(shopState.q)}" />
+        <button class="f-clear-btn ${shopState.q?"":"hidden"}" id="fQClear" onclick="clearSearchFilter()" aria-label="Clear search" type="button">✕</button>
+      </div>
       <div class="f-group"><h3>Category</h3>${["Bags","Travel Accessories","Apparel","Everyday Essentials"].map(c=>`
         <label class="f-check"><input type="checkbox" data-fcat="${c}" ${shopState.cats.includes(c)?"checked":""}/> ${c}</label>`).join("")}</div>
       <div class="f-group"><h3>Price</h3>${[["all","All prices"],["under250","Under Rp250rb"],["250to400","Rp250–400rb"],["over400","Over Rp400rb"]].map(o=>`
@@ -448,7 +584,7 @@ function renderShop(q){
           <option value="ready" ${shopState.avail==="ready"?"selected":""}>In stock</option>
           <option value="low" ${shopState.avail==="low"?"selected":""}>Low stock (≤ 8)</option>
         </select></div>
-      <button class="btn btn-ghost btn-block btn-sm" onclick="clearFilters()">CLEAR FILTERS</button>
+      <button class="btn btn-ghost btn-block btn-sm" onclick="clearFilters()">CLEAR ALL FILTERS</button>
     </aside>
     <div>
       <div class="shop-toolbar"><span class="count" id="shopCount"></span>
@@ -499,16 +635,34 @@ function paintShopGrid(loading=false){
     <span class="chip">${esc(c.label)} <button onclick="removeFilter('${c.type}','${esc(c.val||"")}')" aria-label="Remove filter">✕</button></span>
   `).join("");
   g.innerHTML=r.length?r.map(productCard).join(""):`
-    <div class="empty" style="grid-column:1/-1"><h3>No products found.</h3><p>Try adjusting your filters or search.</p><button class="btn btn-dark" onclick="clearFilters()">CLEAR FILTERS</button></div>`;
+    <div class="empty" style="grid-column:1/-1">
+      <h3>No products found</h3>
+      <p>No products match your current combination of filters.</p>
+      <button class="btn btn-dark" onclick="clearFilters()">RESET ALL FILTERS</button>
+      <div style="margin-top:16px;font-size:13px;color:var(--muted)">Popular searches: <a href="#/shop" onclick="shopState.q='daypack';document.getElementById('fQ').value='daypack';paintShopGrid();return false;" style="text-decoration:underline;color:var(--ink)">Daypack</a> · <a href="#/shop" onclick="shopState.q='bottle';document.getElementById('fQ').value='bottle';paintShopGrid();return false;" style="text-decoration:underline;color:var(--ink)">Bottle</a> · <a href="#/shop" onclick="shopState.q='jacket';document.getElementById('fQ').value='jacket';paintShopGrid();return false;" style="text-decoration:underline;color:var(--ink)">Jacket</a></div>
+    </div>`;
   const rec=getRecent().map(byId).filter(Boolean).slice(0,3);
   document.getElementById("recentRow").innerHTML=rec.length?`<div class="sec-head" style="margin:34px 0 16px"><div><h2 style="font-size:24px">Recently Viewed</h2></div></div><div class="grid grid-3">${rec.map(productCard).join("")}</div>`:"";
+  updatePillsUI();
+}
+function updatePillsUI(){
+  document.querySelectorAll("#shopPills .shop-pill").forEach(pill=>{
+    const cat=pill.textContent.trim();
+    const isActive=cat==="All"?shopState.cats.length===0:(shopState.cats.length===1&&shopState.cats[0]===cat);
+    pill.classList.toggle("active", isActive);
+  });
 }
 function bindShop(){
-  const q=document.getElementById("fQ"); if(!q) return;
+  const q=document.getElementById("fQ"), qClear=document.getElementById("fQClear");
+  if(!q) return;
   document.getElementById("fSort").value=shopState.sort;
   document.getElementById("fAvail").value=shopState.avail;
   let deb;
-  q.oninput=()=>{clearTimeout(deb);deb=setTimeout(()=>{shopState.q=q.value;paintShopGrid();},250);};
+  q.oninput=()=>{
+    clearTimeout(deb);
+    if(qClear) qClear.classList.toggle("hidden", !q.value.trim());
+    deb=setTimeout(()=>{shopState.q=q.value.trim();paintShopGrid();},250);
+  };
   document.querySelectorAll("[data-fcat]").forEach(c=>c.onchange=()=>{shopState.cats=[...document.querySelectorAll("[data-fcat]:checked")].map(x=>x.dataset.fcat);paintShopGrid();});
   document.querySelectorAll("[data-fcolor]").forEach(c=>c.onchange=()=>{shopState.colors=[...document.querySelectorAll("[data-fcolor]:checked")].map(x=>x.dataset.fcolor);paintShopGrid();});
   document.querySelectorAll('[name="fprice"]').forEach(r=>r.onchange=()=>{shopState.price=document.querySelector('[name="fprice"]:checked').value;paintShopGrid();});
@@ -516,8 +670,25 @@ function bindShop(){
   document.getElementById("fSort").onchange=(e)=>{shopState.sort=e.target.value;paintShopGrid();};
   paintShopGrid(true); setTimeout(()=>paintShopGrid(false),350);
 }
+window.selectCatPill=(cat)=>{
+  if(cat==="All"){
+    shopState.cats=[];
+    document.querySelectorAll("[data-fcat]").forEach(c=>c.checked=false);
+  } else {
+    shopState.cats=[cat];
+    document.querySelectorAll("[data-fcat]").forEach(c=>c.checked=(c.dataset.fcat===cat));
+  }
+  paintShopGrid();
+};
+window.clearSearchFilter=()=>{
+  shopState.q="";
+  const q=document.getElementById("fQ"), qc=document.getElementById("fQClear");
+  if(q) q.value="";
+  if(qc) qc.classList.add("hidden");
+  paintShopGrid();
+};
 window.removeFilter=(type,val)=>{
-  if(type==="q"){ shopState.q=""; const el=document.getElementById("fQ"); if(el) el.value=""; }
+  if(type==="q"){ shopState.q=""; const el=document.getElementById("fQ"), qc=document.getElementById("fQClear"); if(el) el.value=""; if(qc) qc.classList.add("hidden"); }
   if(type==="cat"){ shopState.cats=shopState.cats.filter(x=>x!==val); const el=document.querySelector(`[data-fcat="${val}"]`); if(el) el.checked=false; }
   if(type==="color"){ shopState.colors=shopState.colors.filter(x=>x!==val); const el=document.querySelector(`[data-fcolor="${val}"]`); if(el) el.checked=false; }
   if(type==="price"){ shopState.price="all"; const el=document.querySelector('[name="fprice"][value="all"]'); if(el) el.checked=true; }
@@ -536,6 +707,30 @@ function renderProduct(id){
   const rel=PRODUCTS.filter(x=>x.id!==id&&(x.cat===p.cat)).concat(PRODUCTS.filter(x=>x.id!==id&&x.cat!==p.cat)).slice(0,4);
   const stockCls=p.stock===0?"out":p.stock<=8?"low":"ok";
   const stockTxt=p.stock===0?"Out of stock":p.stock<=8?`Only ${p.stock} left in stock`:`In stock — ready to ship`;
+  const badges=TRAVEL_BADGES[p.id]||[];
+  const badgeHtml=badges.length?`
+    <div class="travel-badges">
+      ${badges.map(b=>`<span class="travel-badge"><span class="travel-badge-dot"></span>${b}</span>`).join("")}
+    </div>`:"" ;
+  const pair=PAIRINGS[p.id];
+  const pairProd=pair?byId(pair.pairId):null;
+  const pairingHtml=pairProd?`
+    <div class="pairing-section">
+      <h3>Travel System Pairing</h3>
+      <div class="pairing-card">
+        <a href="#/product/${pairProd.id}" class="pairing-thumb">${imgTag(pairProd.images[0],pairProd.id,pairProd.name)}</a>
+        <div class="pairing-info">
+          <div class="pairing-tag">${pair.tag}</div>
+          <a href="#/product/${pairProd.id}" class="pairing-name">${pairProd.name}</a>
+          <div class="pairing-desc">${pair.reason}</div>
+        </div>
+        <div class="pairing-action">
+          <div class="pairing-price">${rp(pairProd.price)}</div>
+          <button class="btn btn-dark btn-sm" onclick="addToCart('${pairProd.id}')">+ Add Companion</button>
+        </div>
+      </div>
+    </div>`:"" ;
+
   return `<div class="pd">
     <div class="crumb"><a href="#/">Home</a> / <a href="#/shop">Shop</a> / <a href="#/shop?cat=${encodeURIComponent(p.cat)}">${p.cat}</a> / <b style="color:var(--ink)">${p.name}</b></div>
     <div class="pd-grid">
@@ -549,6 +744,7 @@ function renderProduct(id){
         <div class="pd-rating"><span class="stars">${stars(p.rating)}</span><span><b style="color:var(--ink)">${p.rating}</b> · ${p.reviews} reviews</span></div>
         <div class="pd-price"><span class="now">${rp(p.price)}</span>${p.old?`<span class="price-old">${rp(p.old)}</span><span class="badge sale">Save ${rp(p.old-p.price)}</span>`:""}</div>
         <span class="stock ${stockCls}"><i></i>${stockTxt}</span>
+        ${badgeHtml}
         <p class="pd-short">${p.desc}</p>
         <div class="opt-label">Color — <span id="colorName">${pdSel.color}</span></div>
         <div class="swatch-row" id="colorRow">${p.colors.map(c=>`<button class="swatch color-swatch ${c===pdSel.color?"active":""}" title="${c}" style="background:${COLOR_HEX[c]||"#999"}" onclick="setColor('${c}')" aria-label="${c}"></button>`).join("")}</div>
@@ -571,6 +767,7 @@ function renderProduct(id){
         </div>
       </div>
     </div>
+    ${pairingHtml}
     <div class="sticky-cta"><button class="btn btn-dark" onclick="pdAdd('${p.id}')">ADD TO BAG — <span id="stickyCtaPrice">${rp(p.price)}</span></button></div>
     <div class="sec-head" style="margin-top:56px"><div><h2>You May Also Like</h2></div><a class="link-arrow" href="#/shop">View all →</a></div>
     <div class="grid grid-4">${rel.map(productCard).join("")}</div>
@@ -633,7 +830,8 @@ function renderCart(){
     </div>`;}).join("")}
     <a href="#/shop" class="link-arrow" style="align-self:start">← Continue shopping</a>
   </div>
-  <div class="summary"><h3 style="margin:0 0 4px;font-family:var(--font-ed);font-size:22px">Summary</h3>
+  <div class="summary"><h3 style="margin:0 0 10px;font-family:var(--font-ed);font-size:22px">Summary</h3>
+    ${renderFreeShippingBar(t.sub-t.disc-t.bundle)}
     <div class="kv"><span>Subtotal</span><b>${rp(t.sub)}</b></div>
     ${t.disc?`<div class="kv kit-save"><span>Coupon ${getCoupon()}</span><span>− ${rp(t.disc)}</span></div>`:""}${bundleLine(t)}
     <div class="kv"><span>Shipping</span><span class="muted">At checkout</span></div>
@@ -648,12 +846,12 @@ function renderCart(){
     <p class="small muted center">Try <b>NOMAD10</b> for 10% off · complete kits save 5% automatically</p>
   </div></div></div>`;
 }
-window.removeCoupon=()=>{ store.set("nomad_coupon",null); toast("Coupon removed"); render(false); };
+window.removeCoupon=()=>{ store.set("nomad_coupon",null); toast("Coupon removed"); render(false); renderDrawer(); };
 window.applyCoupon=()=>{
   const v=(document.getElementById("cpn").value||"").trim().toUpperCase();
   const m=document.getElementById("cpnMsg");
-  if(!v){store.set("nomad_coupon",null);render(false);return;}
-  if(COUPONS[v]){store.set("nomad_coupon",v);toast(`Coupon applied — ${Math.round(COUPONS[v]*100)}% off (bundle perk paused)`,"ok");render(false);}
+  if(!v){store.set("nomad_coupon",null);render(false);renderDrawer();return;}
+  if(COUPONS[v]){store.set("nomad_coupon",v);toast(`Coupon applied — ${Math.round(COUPONS[v]*100)}% off (bundle perk paused)`,"ok");render(false);renderDrawer();}
   else{m.textContent="Invalid coupon code. Try NOMAD10.";m.className="coupon-msg err";}
 };
 
@@ -723,10 +921,120 @@ function bindCheckout(){
       <div class="btn-row" style="margin-top:8px"><button class="btn btn-ghost" onclick="co.step=1;render()">← BACK</button><button class="btn btn-dark" style="flex:1" onclick="co.step=3;render()">CONTINUE TO PAYMENT →</button></div></div>`;
   }
   if(co.step===3){
-    const btnText = co.pay==="cod" ? `CONFIRM CASH ON DELIVERY — ${rp(totals(co.ship).total)}` : `SIMULATE PAYMENT — ${rp(totals(co.ship).total)}`;
+    const tot = totals(co.ship).total;
+    const isCod = co.pay==="cod";
+    const btnText = isCod ? `CONFIRM CASH ON DELIVERY — ${rp(tot)}` : `SIMULATE PAYMENT — ${rp(tot)}`;
+
+    let payDetailHtml = "";
+    if(co.pay === "qris"){
+      payDetailHtml = `
+        <div class="pay-details-card">
+          <div class="pay-details-header">
+            <span>QRIS Standar Pembayaran Nasional</span>
+            <span class="qris-badge">QRIS</span>
+          </div>
+          <div class="qris-display">
+            <div class="qris-merchant">PT NOMAD GOODS INDONESIA</div>
+            <div class="qris-nm">NMID: ID1024098234891</div>
+            <svg class="qris-qr" viewBox="0 0 200 200" fill="currentColor">
+              <rect width="200" height="200" fill="#fff" />
+              <rect x="16" y="16" width="48" height="48" fill="#18251F"/>
+              <rect x="24" y="24" width="32" height="32" fill="#fff"/>
+              <rect x="32" y="32" width="16" height="16" fill="#18251F"/>
+              <rect x="136" y="16" width="48" height="48" fill="#18251F"/>
+              <rect x="144" y="24" width="32" height="32" fill="#fff"/>
+              <rect x="152" y="32" width="16" height="16" fill="#18251F"/>
+              <rect x="16" y="136" width="48" height="48" fill="#18251F"/>
+              <rect x="24" y="144" width="32" height="32" fill="#fff"/>
+              <rect x="32" y="152" width="16" height="16" fill="#18251F"/>
+              <rect x="76" y="20" width="12" height="12" fill="#18251F"/>
+              <rect x="96" y="28" width="12" height="12" fill="#18251F"/>
+              <rect x="112" y="16" width="12" height="12" fill="#18251F"/>
+              <rect x="20" y="76" width="12" height="12" fill="#18251F"/>
+              <rect x="40" y="88" width="12" height="12" fill="#18251F"/>
+              <rect x="74" y="74" width="52" height="52" fill="#18251F" rx="8"/>
+              <rect x="82" y="82" width="36" height="36" fill="#fff" rx="4"/>
+              <text x="100" y="106" font-size="16" font-weight="bold" fill="#B87952" text-anchor="middle" font-family="sans-serif">N</text>
+              <rect x="136" y="76" width="12" height="12" fill="#18251F"/>
+              <rect x="164" y="88" width="12" height="12" fill="#18251F"/>
+              <rect x="76" y="136" width="12" height="12" fill="#18251F"/>
+              <rect x="100" y="152" width="12" height="12" fill="#18251F"/>
+              <rect x="136" y="136" width="20" height="20" fill="#18251F"/>
+              <rect x="164" y="156" width="16" height="16" fill="#18251F"/>
+            </svg>
+            <div style="font-size:12px;color:var(--muted)">Scan via BCA Mobile, Livin' by Mandiri, GoPay, OVO, or DANA</div>
+            <div style="font-weight:700;font-size:14.5px;margin-top:8px;color:var(--ink)">Amount: ${rp(tot)}</div>
+          </div>
+        </div>`;
+    } else if(co.pay === "va"){
+      payDetailHtml = `
+        <div class="pay-details-card">
+          <div class="pay-details-header">
+            <span>BCA Virtual Account (Simulated)</span>
+            <span class="small muted">Instant Verification</span>
+          </div>
+          <div class="va-display">
+            <div class="small muted">Virtual Account Number:</div>
+            <div class="va-row">
+              <span class="va-num">8808 0812 9942 3810</span>
+              <button class="copy-btn" onclick="copyText('8808081299423810', 'VA number copied!')">Copy</button>
+            </div>
+            <div class="bank-info-row"><span>Account Name</span><b>NOMAD / ${esc(co.info.name||"Customer")}</b></div>
+            <div class="bank-info-row"><span>Total Amount</span><b>${rp(tot)}</b></div>
+            <p class="small muted" style="margin:10px 0 0;line-height:1.45">1. Open m-Banking > Transfer > Virtual Account<br/>2. Enter VA number above<br/>3. Verify recipient and amount will auto-fill</p>
+          </div>
+        </div>`;
+    } else if(co.pay === "transfer"){
+      payDetailHtml = `
+        <div class="pay-details-card">
+          <div class="pay-details-header">
+            <span>Bank Transfer (Manual Verification)</span>
+            <span class="small muted">BCA / Mandiri</span>
+          </div>
+          <div class="va-display">
+            <div class="bank-info-row">
+              <span>BCA Account: <b>5420-192-881</b></span>
+              <button class="copy-btn" onclick="copyText('5420192881', 'Account number copied!')">Copy</button>
+            </div>
+            <div class="bank-info-row"><span>Account Holder</span><b>PT NOMAD GOODS INDONESIA</b></div>
+            <div class="bank-info-row"><span>Amount</span><b>${rp(tot)}</b></div>
+          </div>
+        </div>`;
+    } else if(co.pay === "ewallet"){
+      payDetailHtml = `
+        <div class="pay-details-card">
+          <div class="pay-details-header">
+            <span>E-Wallet Quick Pay</span>
+            <span class="small muted">One-tap simulation</span>
+          </div>
+          <div class="va-display">
+            <p class="small" style="margin:0 0 10px">Registered phone: <b>${esc(co.info.phone||"0812xxxxxxx")}</b></p>
+            <div style="display:flex;gap:8px;font-size:12.5px;font-weight:600;flex-wrap:wrap">
+              <span style="background:#E5F2E8;color:#256B3D;padding:5px 12px;border-radius:6px">GoPay Ready</span>
+              <span style="background:#EBF2FA;color:#1E5388;padding:5px 12px;border-radius:6px">OVO Ready</span>
+              <span style="background:#F4EBFB;color:#6C2B92;padding:5px 12px;border-radius:6px">DANA Ready</span>
+            </div>
+          </div>
+        </div>`;
+    } else if(co.pay === "cod"){
+      payDetailHtml = `
+        <div class="pay-details-card">
+          <div class="pay-details-header">
+            <span>Cash on Delivery (COD)</span>
+            <span class="small" style="color:#256B3D;font-weight:700">✓ Pay at Doorstep</span>
+          </div>
+          <div class="cod-box">
+            <div class="bank-info-row"><span>Amount to prepare</span><b>${rp(tot)}</b></div>
+            <div class="bank-info-row"><span>Courier Partner</span><b>${SHIPPING.find(s=>s.id===co.ship).name} Courier</b></div>
+            <p class="small muted" style="margin:10px 0 0;line-height:1.45">Please prepare exact cash when the courier arrives. No digital transaction fee.</p>
+          </div>
+        </div>`;
+    }
+
     m.innerHTML=`<div class="card"><h3>03 — Payment <span class="small muted">(simulation — no real charge)</span></h3>
       ${PAYMENTS.map(p=>`<label class="pay-opt ${co.pay===p.id?"active":""}"><input type="radio" name="pay" ${co.pay===p.id?"checked":""} onchange="setPay('${p.id}')" /><span class="pay-icon">${p.icon}</span><div class="grow"><b>${p.name}</b><small>${p.desc}</small></div></label>`).join("")}
-      <div class="btn-row" style="margin-top:8px"><button class="btn btn-ghost" onclick="co.step=2;render()">← BACK</button><button class="btn btn-terra" style="flex:1" onclick="simulatePay()">${btnText}</button></div></div>`;
+      ${payDetailHtml}
+      <div class="btn-row" style="margin-top:14px"><button class="btn btn-ghost" onclick="co.step=2;render()">← BACK</button><button class="btn btn-terra" style="flex:1" onclick="simulatePay()">${btnText}</button></div></div>`;
   }
   if(co.step===4){
     const t=totals(co.ship); const sh=SHIPPING.find(s=>s.id===co.ship), py=PAYMENTS.find(p=>p.id===co.pay), v=co.info;
@@ -748,7 +1056,12 @@ window.saveInfo=()=>{
     if(bad)ok=false; co.info[f]=el.value.trim();});
   co.info.notes=document.getElementById("fi-notes").value.trim();
   store.set("nomad_info",co.info);
-  if(!ok){toast("Please complete the highlighted fields","err");return;}
+  if(!ok){
+    toast("Please complete the highlighted fields","err");
+    const firstBad=document.querySelector(".field.invalid input, .field.invalid textarea");
+    if(firstBad) firstBad.focus();
+    return;
+  }
   co.step=2; render();
 };
 window.setShip=(id)=>{co.ship=id;render();};
@@ -893,8 +1206,21 @@ document.querySelectorAll("#mobileMenu a").forEach(a=>a.onclick=()=>{
   document.getElementById("mobileMenu").classList.add("hidden");
   ham.setAttribute("aria-expanded","false");
 });
-document.getElementById("searchBtn").onclick=()=>{const b=document.getElementById("searchBar");b.classList.toggle("hidden");document.getElementById("searchInput").focus();};
-document.getElementById("searchGo").onclick=()=>{const v=document.getElementById("searchInput").value;go("#/shop?q="+encodeURIComponent(v));document.getElementById("searchBar").classList.add("hidden");};
+const sInput=document.getElementById("searchInput"), sClear=document.getElementById("searchClear");
+if(sInput && sClear){
+  sInput.addEventListener("input", ()=>{ sClear.classList.toggle("hidden", !sInput.value); });
+  sClear.addEventListener("click", ()=>{ sInput.value=""; sClear.classList.add("hidden"); sInput.focus(); });
+}
+document.getElementById("searchBtn").onclick=()=>{
+  const b=document.getElementById("searchBar");
+  b.classList.toggle("hidden");
+  if(!b.classList.contains("hidden")) document.getElementById("searchInput").focus();
+};
+document.getElementById("searchGo").onclick=()=>{
+  const v=document.getElementById("searchInput").value;
+  go("#/shop?q="+encodeURIComponent(v));
+  document.getElementById("searchBar").classList.add("hidden");
+};
 document.getElementById("searchInput").addEventListener("keydown",(e)=>{if(e.key==="Enter")document.getElementById("searchGo").click();});
 document.getElementById("announceCoupon").onclick=()=>{
   store.set("nomad_coupon","NOMAD10");
