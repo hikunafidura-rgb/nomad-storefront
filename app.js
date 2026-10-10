@@ -110,7 +110,7 @@ const rp = (n) => "Rp" + Math.round(n).toLocaleString("id-ID");
 const esc = (s="") => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const store = {
   get:(k,f)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):f }catch{ return f } },
-  set:(k,v)=>localStorage.setItem(k,JSON.stringify(v))
+  set:(k,v)=>{ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){ console.warn("Storage set error",e); } }
 };
 const getCart=()=>store.get("nomad_cart",[]).filter(i=>i&&byId(i.pid)&&Number.isInteger(i.qty)&&i.qty>0);
 const setCart=(c)=>{store.set("nomad_cart",c);updateBadges();renderDrawer();};
@@ -137,7 +137,7 @@ function updateBadges(){
   const cc=document.getElementById("cartCount"), wc=document.getElementById("wishCount");
   cc.textContent=cq; cc.classList.toggle("hidden",cq===0);
   wc.textContent=w; wc.classList.toggle("hidden",w===0);
-  const dc=document.getElementById("drawerCount"); if(dc) dc.textContent=cq?`(${cq} items)`:"";
+  const dc=document.getElementById("drawerCount"); if(dc) dc.textContent=cq?`(${cq} item${cq===1?"":"s"})`:"";
 }
 function totals(shipId="regular", coupon=getCoupon()){
   const cart=getCart();
@@ -151,7 +151,7 @@ function totals(shipId="regular", coupon=getCoupon()){
   return { sub, disc, bundle, ship, total:after+ship };
 }
 const bundleLine=(t)=>t.bundle?`<div class="kv kit-save"><span>Bundle savings (5%)</span><span>− ${rp(t.bundle)}</span></div>`:"";
-function addToCart(pid, color, size, qty=1, openDrawer=true){
+function addToCart(pid, color, size, qty=1, openDrawer=true, silent=false){
   const p=byId(pid); if(!p) return false;
   color=color||p.colors[0]; size=size||(p.sizes?p.sizes[0]:null);
   const cart=getCart();
@@ -161,46 +161,61 @@ function addToCart(pid, color, size, qty=1, openDrawer=true){
   const ex=cart.find(key);
   if(ex) ex.qty+=qty; else cart.push({pid,color,size,qty});
   setCart(cart);
-  toast("Added to bag");
+  if(!silent) toast("Added to bag");
   if(openDrawer) openCart();
   return true;
 }
 
 /* ---------- drawer ---------- */
-function openCart(){ document.getElementById("cartDrawer").classList.remove("hidden"); document.getElementById("overlay").classList.remove("hidden"); renderDrawer(); }
-function closeCart(){ document.getElementById("cartDrawer").classList.add("hidden"); document.getElementById("overlay").classList.add("hidden"); }
+function openCart(){ document.getElementById("cartDrawer").classList.remove("hidden"); document.getElementById("overlay").classList.remove("hidden"); document.body.style.overflow="hidden"; renderDrawer(); }
+function closeCart(){ document.getElementById("cartDrawer").classList.add("hidden"); document.getElementById("overlay").classList.add("hidden"); document.body.style.overflow=""; }
 function renderDrawer(){
   const body=document.getElementById("drawerBody"), foot=document.getElementById("drawerFoot");
   if(!body) return;
   const cart=getCart();
   if(!cart.length){
     body.innerHTML=`<div class="empty" style="padding:40px 16px"><h3>Your bag is empty</h3><p class="muted">Explore our essentials and start building your journey.</p></div>`;
-    foot.innerHTML=`<a href="#/shop" class="btn btn-dark btn-block" onclick="closeCart()">SHOP COLLECTION</a>`;
+    foot.innerHTML=`<div class="drawer-actions"><a href="#/shop" class="btn btn-dark btn-block" onclick="closeCart()">SHOP COLLECTION</a></div>`;
     return;
   }
-  body.innerHTML=cart.map((i,ix)=>{const p=byId(i.pid);return `
-    <div class="mini-line">
-      <a href="#/product/${p.id}" class="mini-thumb">${imgTag(p.images[0],p.id,p.name)}</a>
-      <div class="mini-details">
-        <div class="mini-header">
-          <a class="mini-name" href="#/product/${p.id}">${p.name}</a>
-          <b class="mini-price">${rp(p.price*i.qty)}</b>
-        </div>
-        <div class="small muted">${i.color}${i.size?" · "+i.size:""} · ${rp(p.price)}</div>
-        <div class="cl-controls" style="margin-top:8px">
-          <div class="cl-qty" role="group" aria-label="Quantity for ${p.name}">
-            <button onclick="chQty(${ix},-1)" aria-label="Decrease quantity">−</button><b>${i.qty}</b><button onclick="chQty(${ix},1)" aria-label="Increase quantity">+</button>
-          </div>
-          <button class="cl-remove" onclick="rmLine(${ix})" aria-label="Remove ${p.name} from bag">Remove</button>
-        </div>
-      </div>
-    </div>`;}).join("");
   const t=totals();
+  body.innerHTML=`
+    <div class="mini-items">
+      ${cart.map((i,ix)=>{const p=byId(i.pid);return `
+        <div class="mini-line">
+          <a href="#/product/${p.id}" class="mini-thumb">${imgTag(p.images[0],p.id,p.name)}</a>
+          <div class="mini-details">
+            <div class="mini-header">
+              <a class="mini-name" href="#/product/${p.id}">${p.name}</a>
+              <b class="mini-price">${rp(p.price*i.qty)}</b>
+            </div>
+            <div class="mini-var">${i.color}${i.size?" · "+i.size:""} · ${rp(p.price)}</div>
+            <div class="mini-controls">
+              <div class="cl-qty mini-qty" role="group" aria-label="Quantity for ${p.name}">
+                <button onclick="chQty(${ix},-1)" aria-label="Decrease quantity">−</button><b>${i.qty}</b><button onclick="chQty(${ix},1)" aria-label="Increase quantity">+</button>
+              </div>
+              <button class="mini-remove" onclick="rmLine(${ix})" aria-label="Remove ${p.name} from bag">Remove</button>
+            </div>
+          </div>
+        </div>`;}).join("")}
+    </div>
+    <div class="drawer-summary">
+      <div class="drawer-subtotal">
+        <span class="drawer-subtotal-label">Subtotal</span>
+        <b class="drawer-subtotal-val">${rp(t.sub)}</b>
+      </div>
+      ${t.disc?`<div class="kv kit-save"><span>Coupon ${getCoupon()}</span><span>− ${rp(t.disc)}</span></div>`:""}
+      ${bundleLine(t)}
+      ${(t.disc||t.bundle)?`<div class="kv total" style="padding:6px 0 2px"><span>Net Total</span><b>${rp(t.sub-t.disc-t.bundle)}</b></div>`:""}
+      <div class="drawer-divider"></div>
+      <p class="drawer-ship-note">Shipping calculated at checkout${(t.sub-t.disc-t.bundle)>=FREE_SHIP_THRESHOLD?" · Regular ships free 🎉":""}</p>
+    </div>`;
+
   foot.innerHTML=`
-    <div class="kv"><span>Subtotal</span><b>${rp(t.sub)}</b></div>
-    <p class="small muted" style="margin:6px 0 12px">Shipping calculated at checkout${(t.sub-t.disc-t.bundle)>=FREE_SHIP_THRESHOLD?" · Regular ships free 🎉":""}</p>
-    <a href="#/cart" class="btn btn-ghost btn-block" onclick="closeCart()">VIEW BAG</a>
-    <a href="#/checkout" class="btn btn-dark btn-block" style="margin-top:8px" onclick="closeCart()">PROCEED TO CHECKOUT</a>`;
+    <div class="drawer-actions">
+      <a href="#/cart" class="btn btn-ghost btn-block" onclick="closeCart()">VIEW BAG</a>
+      <a href="#/checkout" class="btn btn-dark btn-block" onclick="closeCart()">PROCEED TO CHECKOUT</a>
+    </div>`;
 }
 window.chQty=(ix,d)=>{
   const c=getCart(); if(!c[ix]) return;
@@ -230,7 +245,7 @@ function toggleWish(pid){
   if(w.includes(pid)){w=w.filter(x=>x!==pid);toast("Removed from wishlist");}
   else{w.push(pid);toast("Added to wishlist","ok");}
   setWish(w);
-  render();
+  render(false);
 }
 window.toggleWish=toggleWish;
 
@@ -398,7 +413,7 @@ function mountKit(){
 }
 window.addKit=(key)=>{
   const k=KITS[key]; let n=0;
-  k.ids.forEach(id=>{const p=byId(id);if(addToCart(id,p.colors[0],p.sizes?p.sizes[0]:null,1,false))n++;});
+  k.ids.forEach(id=>{const p=byId(id);if(addToCart(id,p.colors[0],p.sizes?p.sizes[0]:null,1,false,true))n++;});
   if(getCoupon()) toast(`${n} items added · coupon ${getCoupon()} kept, bundle perk paused`);
   else toast(`${n} items added · 5% bundle perk applied`,"ok");
   openCart();
@@ -420,7 +435,11 @@ function renderShop(q){
       <div class="f-group"><h3>Color</h3>${["Black","Sand","Olive","Silver"].map(c=>`
         <label class="f-check"><input type="checkbox" data-fcolor="${c}"/> <span class="dot" style="background:${COLOR_HEX[c]};width:14px;height:14px"></span> ${c}</label>`).join("")}</div>
       <div class="f-group"><h3>Availability</h3>
-        <select class="f-select" id="fAvail"><option value="all">All</option><option value="ready">In stock</option><option value="low">Low stock (≤ 8)</option></select></div>
+        <select class="f-select" id="fAvail">
+          <option value="all" ${shopState.avail==="all"?"selected":""}>All</option>
+          <option value="ready" ${shopState.avail==="ready"?"selected":""}>In stock</option>
+          <option value="low" ${shopState.avail==="low"?"selected":""}>Low stock (≤ 8)</option>
+        </select></div>
       <button class="btn btn-ghost btn-block btn-sm" onclick="clearFilters()">CLEAR FILTERS</button>
     </aside>
     <div>
@@ -458,10 +477,19 @@ function paintShopGrid(loading=false){
   const r=filteredProducts();
   document.getElementById("shopCount").textContent=`${r.length} product${r.length!==1?"s":""}`;
   const chips=[];
-  if(shopState.q) chips.push(`“${shopState.q}”`);
-  shopState.cats.forEach(c=>chips.push(c));
-  shopState.colors.forEach(c=>chips.push(c));
-  document.getElementById("shopChips").innerHTML=chips.map(c=>`<span class="chip">${esc(c)}</span>`).join("");
+  if(shopState.q) chips.push({label:`“${shopState.q}”`, type:"q"});
+  shopState.cats.forEach(c=>chips.push({label:c, type:"cat", val:c}));
+  shopState.colors.forEach(c=>chips.push({label:c, type:"color", val:c}));
+  if(shopState.price!=="all"){
+    const pNames={under250:"Under Rp250rb","250to400":"Rp250–400rb",over400:"Over Rp400rb"};
+    chips.push({label:pNames[shopState.price]||shopState.price, type:"price"});
+  }
+  if(shopState.avail!=="all"){
+    chips.push({label:shopState.avail==="ready"?"In stock":"Low stock (≤ 8)", type:"avail"});
+  }
+  document.getElementById("shopChips").innerHTML=chips.map(c=>`
+    <span class="chip">${esc(c.label)} <button onclick="removeFilter('${c.type}','${esc(c.val||"")}')" aria-label="Remove filter">✕</button></span>
+  `).join("");
   g.innerHTML=r.length?r.map(productCard).join(""):`
     <div class="empty" style="grid-column:1/-1"><h3>No products found.</h3><p>Try adjusting your filters or search.</p><button class="btn btn-dark" onclick="clearFilters()">CLEAR FILTERS</button></div>`;
   const rec=getRecent().map(byId).filter(Boolean).slice(0,3);
@@ -470,6 +498,7 @@ function paintShopGrid(loading=false){
 function bindShop(){
   const q=document.getElementById("fQ"); if(!q) return;
   document.getElementById("fSort").value=shopState.sort;
+  document.getElementById("fAvail").value=shopState.avail;
   let deb;
   q.oninput=()=>{clearTimeout(deb);deb=setTimeout(()=>{shopState.q=q.value;paintShopGrid();},250);};
   document.querySelectorAll("[data-fcat]").forEach(c=>c.onchange=()=>{shopState.cats=[...document.querySelectorAll("[data-fcat]:checked")].map(x=>x.dataset.fcat);paintShopGrid();});
@@ -479,6 +508,14 @@ function bindShop(){
   document.getElementById("fSort").onchange=(e)=>{shopState.sort=e.target.value;paintShopGrid();};
   paintShopGrid(true); setTimeout(()=>paintShopGrid(false),350);
 }
+window.removeFilter=(type,val)=>{
+  if(type==="q"){ shopState.q=""; const el=document.getElementById("fQ"); if(el) el.value=""; }
+  if(type==="cat"){ shopState.cats=shopState.cats.filter(x=>x!==val); const el=document.querySelector(`[data-fcat="${val}"]`); if(el) el.checked=false; }
+  if(type==="color"){ shopState.colors=shopState.colors.filter(x=>x!==val); const el=document.querySelector(`[data-fcolor="${val}"]`); if(el) el.checked=false; }
+  if(type==="price"){ shopState.price="all"; const el=document.querySelector('[name="fprice"][value="all"]'); if(el) el.checked=true; }
+  if(type==="avail"){ shopState.avail="all"; const el=document.getElementById("fAvail"); if(el) el.value="all"; }
+  paintShopGrid();
+};
 window.clearFilters=()=>{ toast("Filters cleared"); if((location.hash||"").includes("?")) location.hash="#/shop"; else render(); };
 
 /* ---------- PRODUCT DETAIL ---------- */
@@ -593,17 +630,22 @@ function renderCart(){
     ${t.disc?`<div class="kv kit-save"><span>Coupon ${getCoupon()}</span><span>− ${rp(t.disc)}</span></div>`:""}${bundleLine(t)}
     <div class="kv"><span>Shipping</span><span class="muted">At checkout</span></div>
     <div class="kv total"><span>Total <span class="small muted">excl. shipping</span></span><span>${rp(t.sub-t.disc-t.bundle)}</span></div>
-    <div class="coupon-row"><input id="cpn" placeholder="Coupon code" value="${getCoupon()||""}" /><button class="btn btn-ghost btn-sm" onclick="applyCoupon()">Apply</button></div>
+    <div class="coupon-row">
+      <input id="cpn" placeholder="Coupon code" value="${getCoupon()||""}" />
+      <button class="btn btn-ghost btn-sm" onclick="applyCoupon()">Apply</button>
+      ${getCoupon()?`<button class="btn btn-ghost btn-sm" onclick="removeCoupon()">Remove</button>`:""}
+    </div>
     <div class="coupon-msg" id="cpnMsg"></div>
     <a href="#/checkout" class="btn btn-dark btn-block">PROCEED TO CHECKOUT</a>
     <p class="small muted center">Try <b>NOMAD10</b> for 10% off · complete kits save 5% automatically</p>
   </div></div></div>`;
 }
+window.removeCoupon=()=>{ store.set("nomad_coupon",null); toast("Coupon removed"); render(false); };
 window.applyCoupon=()=>{
   const v=(document.getElementById("cpn").value||"").trim().toUpperCase();
   const m=document.getElementById("cpnMsg");
-  if(!v){store.set("nomad_coupon",null);render();return;}
-  if(COUPONS[v]){store.set("nomad_coupon",v);toast(`Coupon applied — ${Math.round(COUPONS[v]*100)}% off (bundle perk paused)`,"ok");render();}
+  if(!v){store.set("nomad_coupon",null);render(false);return;}
+  if(COUPONS[v]){store.set("nomad_coupon",v);toast(`Coupon applied — ${Math.round(COUPONS[v]*100)}% off (bundle perk paused)`,"ok");render(false);}
   else{m.textContent="Invalid coupon code. Try NOMAD10.";m.className="coupon-msg err";}
 };
 
@@ -630,7 +672,7 @@ function renderWishlist(){
     </div>`).join("")}</div></div>`;
 }
 window.wishToCart=(pid)=>{ const p=byId(pid); if(!p) return;
-  if(addToCart(pid,p.colors[0],p.sizes?p.sizes[0]:null,1,false)){ setWish(getWish().filter(x=>x!==pid)); toast("Moved to bag","ok"); render(); } };
+  if(addToCart(pid,p.colors[0],p.sizes?p.sizes[0]:null,1,false,true)){ setWish(getWish().filter(x=>x!==pid)); toast("Moved to bag","ok"); render(false); } };
 
 /* ---------- CHECKOUT ---------- */
 let co={ step:1, info:store.get("nomad_info",{name:"",phone:"",address:"",city:"",province:"",postal:"",notes:""}), ship:"express", pay:"qris" };
@@ -639,7 +681,11 @@ function renderCheckout(){
   const t=totals(co.ship);
   const steps=["Information","Shipping","Payment","Review"];
   return `<div class="page"><h1>Checkout</h1><p class="sub">${cartQty()} items · secure simulated checkout</p>
-  <div class="steps">${steps.map((s,i)=>`${i>0?'<div class="step-line"></div>':""}<div class="step ${co.step===i+1?"active":""} ${co.step>i+1?"done":""}"><span class="n">${co.step>i+1?"✓":i+1}</span>${s}</div>`).join("")}</div>
+  <div class="steps">${steps.map((s,i)=>{
+    const isDone = co.step > i+1;
+    const isActive = co.step === i+1;
+    return `${i>0?'<div class="step-line"></div>':""}<div class="step ${isActive?"active":""} ${isDone?"done":""}" ${isDone?`onclick="co.step=${i+1};render(false)" style="cursor:pointer" title="Back to ${s}"`:""}><span class="n">${isDone?"✓":i+1}</span>${s}</div>`;
+  }).join("")}</div>
   <div class="co-grid"><div id="coMain"></div>
     <div class="summary"><h3 style="font-family:var(--font-ed);font-size:20px;margin:0 0 10px">Order Summary</h3>
       ${getCart().map(i=>{const p=byId(i.pid);return `<div class="kv"><span>${p.name} <span class="muted">× ${i.qty}</span><br/><span class="small muted">${i.color}${i.size?" · "+i.size:""}</span></span><b>${rp(p.price*i.qty)}</b></div>`;}).join("")}
@@ -669,9 +715,10 @@ function bindCheckout(){
       <div class="btn-row" style="margin-top:8px"><button class="btn btn-ghost" onclick="co.step=1;render()">← BACK</button><button class="btn btn-dark" style="flex:1" onclick="co.step=3;render()">CONTINUE TO PAYMENT →</button></div></div>`;
   }
   if(co.step===3){
+    const btnText = co.pay==="cod" ? `CONFIRM CASH ON DELIVERY — ${rp(totals(co.ship).total)}` : `SIMULATE PAYMENT — ${rp(totals(co.ship).total)}`;
     m.innerHTML=`<div class="card"><h3>03 — Payment <span class="small muted">(simulation — no real charge)</span></h3>
       ${PAYMENTS.map(p=>`<label class="pay-opt ${co.pay===p.id?"active":""}"><input type="radio" name="pay" ${co.pay===p.id?"checked":""} onchange="setPay('${p.id}')" /><span class="pay-icon">${p.icon}</span><div class="grow"><b>${p.name}</b><small>${p.desc}</small></div></label>`).join("")}
-      <div class="btn-row" style="margin-top:8px"><button class="btn btn-ghost" onclick="co.step=2;render()">← BACK</button><button class="btn btn-terra" style="flex:1" onclick="simulatePay()">SIMULATE PAYMENT — ${rp(totals(co.ship).total)}</button></div></div>`;
+      <div class="btn-row" style="margin-top:8px"><button class="btn btn-ghost" onclick="co.step=2;render()">← BACK</button><button class="btn btn-terra" style="flex:1" onclick="simulatePay()">${btnText}</button></div></div>`;
   }
   if(co.step===4){
     const t=totals(co.ship); const sh=SHIPPING.find(s=>s.id===co.ship), py=PAYMENTS.find(p=>p.id===co.pay), v=co.info;
@@ -704,19 +751,22 @@ function closePayModal(){
   if(payTimer2){ clearTimeout(payTimer2); payTimer2=null; }
   const modal=document.getElementById("payModal");
   if(modal) modal.classList.add("hidden");
+  document.body.style.overflow="";
 }
 window.closePayModal=closePayModal;
 window.simulatePay=()=>{
   closePayModal();
   const modal=document.getElementById("payModal"),card=document.getElementById("payCard");
   modal.classList.remove("hidden");
-  card.innerHTML=`<div class="spinner"></div><h3 style="margin:0 0 6px">Processing payment…</h3><p class="muted small">Contacting ${PAYMENTS.find(p=>p.id===co.pay).name} (simulated)</p>`;
+  document.body.style.overflow="hidden";
+  const isCod = co.pay==="cod";
+  card.innerHTML=`<div class="spinner"></div><h3 style="margin:0 0 6px">${isCod?"Setting up order…":"Processing payment…"}</h3><p class="muted small">${isCod?"Setting up Cash on Delivery (simulated)":"Contacting "+PAYMENTS.find(p=>p.id===co.pay).name+" (simulated)"}</p>`;
   payTimer1=setTimeout(()=>{
-    card.innerHTML=`<div class="check-big">✓</div><h3 style="margin:0 0 6px">Payment Successful</h3><p class="muted small">Creating your order…</p>`;
+    card.innerHTML=`<div class="check-big">✓</div><h3 style="margin:0 0 6px">${isCod?"Order Method Confirmed":"Payment Successful"}</h3><p class="muted small">Creating your order…</p>`;
     payTimer2=setTimeout(()=>{
       closePayModal();
       co.step=4; render(); window.scrollTo(0,0);
-      toast("Payment successful","ok");
+      toast(isCod?"Cash on Delivery confirmed":"Payment successful","ok");
     },900);
   },1700);
 };
@@ -779,7 +829,7 @@ function renderTracking(id){
   <div class="kv"><span>Ship to</span><span style="text-align:right">${esc(o.info.address)}, ${esc(o.info.city)}</span></div></div>
   <div class="btn-row" style="margin-top:18px"><a href="#/shop" class="btn btn-ghost" style="flex:1">CONTINUE SHOPPING</a><a href="#/order/${encodeURIComponent(o.id)}" class="btn btn-dark" style="flex:1">VIEW RECEIPT</a></div></div>`;
 }
-window.advance=(eid)=>{const o=findOrder(decodeURIComponent(eid));if(!o)return;if(o.status<STATUSES.length-1){o.status++;updateOrder(o);toast(STATUSES[o.status],"ok");render();}};
+window.advance=(eid)=>{const o=findOrder(decodeURIComponent(eid));if(!o)return;if(o.status<STATUSES.length-1){o.status++;updateOrder(o);toast(STATUSES[o.status],"ok");render(false);}};
 
 /* ---------- master render ---------- */
 function render(scroll=true){
@@ -817,25 +867,46 @@ function render(scroll=true){
     else app.innerHTML=renderTrackingList();
   } else {
     document.title="NOMAD — Carry Less. Go Further.";
-    html=renderHome(); mountKit();
+    html=renderHome(); app.innerHTML=html; mountKit();
   }
   updateBadges();
 }
 
 /* ---------- global nav ---------- */
+const ham=document.getElementById("hamburger");
 document.getElementById("cartBtn").onclick=openCart;
 document.getElementById("closeDrawer").onclick=closeCart;
 document.getElementById("overlay").onclick=closeCart;
-document.getElementById("hamburger").onclick=()=>document.getElementById("mobileMenu").classList.toggle("hidden");
-document.querySelectorAll("#mobileMenu a").forEach(a=>a.onclick=()=>document.getElementById("mobileMenu").classList.add("hidden"));
+ham.onclick=()=>{
+  const isHidden=document.getElementById("mobileMenu").classList.toggle("hidden");
+  ham.setAttribute("aria-expanded",!isHidden);
+};
+document.querySelectorAll("#mobileMenu a").forEach(a=>a.onclick=()=>{
+  document.getElementById("mobileMenu").classList.add("hidden");
+  ham.setAttribute("aria-expanded","false");
+});
 document.getElementById("searchBtn").onclick=()=>{const b=document.getElementById("searchBar");b.classList.toggle("hidden");document.getElementById("searchInput").focus();};
 document.getElementById("searchGo").onclick=()=>{const v=document.getElementById("searchInput").value;go("#/shop?q="+encodeURIComponent(v));document.getElementById("searchBar").classList.add("hidden");};
 document.getElementById("searchInput").addEventListener("keydown",(e)=>{if(e.key==="Enter")document.getElementById("searchGo").click();});
-document.getElementById("announceCoupon").onclick=()=>{store.set("nomad_coupon","NOMAD10");toast("NOMAD10 saved — 10% off at checkout","ok");};
-document.addEventListener("keydown",(e)=>{if(e.key==="Escape"){closeCart();closePayModal();}});
+document.getElementById("announceCoupon").onclick=()=>{
+  store.set("nomad_coupon","NOMAD10");
+  toast("NOMAD10 saved — 10% off at checkout","ok");
+  render(false);
+  renderDrawer();
+};
+document.addEventListener("keydown",(e)=>{
+  if(e.key==="Escape"){
+    closeCart();
+    closePayModal();
+    document.getElementById("searchBar").classList.add("hidden");
+    document.getElementById("mobileMenu").classList.add("hidden");
+    ham.setAttribute("aria-expanded","false");
+  }
+});
 document.querySelectorAll("[data-scroll]").forEach(a=>a.addEventListener("click",()=>{
   const t=a.dataset.scroll;
   document.getElementById("mobileMenu").classList.add("hidden");
+  ham.setAttribute("aria-expanded","false");
   if(location.hash&&location.hash!=="#/"&&location.hash!=="#"){
     location.hash="#/";
     setTimeout(()=>{const el=document.getElementById(t);if(el)el.scrollIntoView({behavior:"smooth"});},150);
