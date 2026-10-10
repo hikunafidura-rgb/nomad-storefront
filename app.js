@@ -171,11 +171,19 @@ function openCart(){ document.getElementById("cartDrawer").classList.remove("hid
 function closeCart(){ document.getElementById("cartDrawer").classList.add("hidden"); document.getElementById("overlay").classList.add("hidden"); document.body.style.overflow=""; }
 function renderDrawer(){
   const body=document.getElementById("drawerBody"), foot=document.getElementById("drawerFoot");
-  if(!body) return;
+  if(!body||!foot) return;
   const cart=getCart();
   if(!cart.length){
-    body.innerHTML=`<div class="empty" style="padding:40px 16px"><h3>Your bag is empty</h3><p class="muted">Explore our essentials and start building your journey.</p></div>`;
-    foot.innerHTML=`<div class="drawer-actions"><a href="#/shop" class="btn btn-dark btn-block" onclick="closeCart()">SHOP COLLECTION</a></div>`;
+    body.innerHTML=`
+      <div class="empty drawer-empty" style="padding:48px 16px">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="muted" style="margin-bottom:12px"><path d="M6 8h15l-1.5 8.5a1 1 0 0 1-1 .5H8.7a1 1 0 0 1-1-.8L5 4.5A1 1 0 0 0 4 3.7H2"/><circle cx="9.5" cy="20.5" r="1.2"/><circle cx="17.5" cy="20.5" r="1.2"/></svg>
+        <h3>Your bag is empty</h3>
+        <p class="muted">Explore our essentials and start building your journey.</p>
+      </div>`;
+    foot.innerHTML=`
+      <div class="drawer-actions">
+        <a href="#/shop" class="btn btn-dark btn-block" onclick="closeCart()">EXPLORE COLLECTION</a>
+      </div>`;
     return;
   }
   const t=totals();
@@ -198,23 +206,23 @@ function renderDrawer(){
             </div>
           </div>
         </div>`;}).join("")}
-    </div>
+    </div>`;
+
+  foot.innerHTML=`
     <div class="drawer-summary">
       <div class="drawer-subtotal">
         <span class="drawer-subtotal-label">Subtotal</span>
         <b class="drawer-subtotal-val">${rp(t.sub)}</b>
       </div>
-      ${t.disc?`<div class="kv kit-save"><span>Coupon ${getCoupon()}</span><span>− ${rp(t.disc)}</span></div>`:""}
+      ${t.disc?`<div class="kv kit-save" style="padding:4px 0"><span>Coupon ${getCoupon()}</span><span>− ${rp(t.disc)}</span></div>`:""}
       ${bundleLine(t)}
-      ${(t.disc||t.bundle)?`<div class="kv total" style="padding:6px 0 2px"><span>Net Total</span><b>${rp(t.sub-t.disc-t.bundle)}</b></div>`:""}
+      ${(t.disc||t.bundle)?`<div class="kv total" style="padding:4px 0 2px"><span>Net Total</span><b>${rp(t.sub-t.disc-t.bundle)}</b></div>`:""}
       <div class="drawer-divider"></div>
       <p class="drawer-ship-note">Shipping calculated at checkout${(t.sub-t.disc-t.bundle)>=FREE_SHIP_THRESHOLD?" · Regular ships free 🎉":""}</p>
-    </div>`;
-
-  foot.innerHTML=`
+    </div>
     <div class="drawer-actions">
-      <a href="#/cart" class="btn btn-ghost btn-block" onclick="closeCart()">VIEW BAG</a>
       <a href="#/checkout" class="btn btn-dark btn-block" onclick="closeCart()">PROCEED TO CHECKOUT</a>
+      <a href="#/cart" class="btn btn-ghost btn-block" onclick="closeCart()">VIEW BAG</a>
     </div>`;
 }
 window.chQty=(ix,d)=>{
