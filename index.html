@@ -28,6 +28,13 @@
       <a href="#/" data-scroll="story">About</a>
     </nav>
     <div class="nav-actions">
+      <button class="icon-btn" id="themeBtn" aria-label="Toggle theme" title="Toggle Dark/Light Mode">
+        <svg class="theme-icon-light" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="theme-icon-dark hidden" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+      <button class="icon-btn" id="accountBtn" aria-label="Account & Orders" title="Account & Orders">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </button>
       <button class="icon-btn" id="searchBtn" aria-label="Search">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       </button>
@@ -56,6 +63,8 @@
     <a href="#/" data-scroll="story">About</a>
     <a href="#/wishlist">Wishlist</a>
     <a href="#/tracking">Track Order</a>
+    <a href="#" id="mobAccountLink">My Account & Orders</a>
+    <a href="#" id="mobFaqLink">Warranty & FAQ</a>
   </div>
 </header>
 
@@ -85,7 +94,7 @@
     <div>
       <h4>Support</h4>
       <p>hello@nomad.co.id<br/>Mon–Sat, 09.00–18.00 WIB</p>
-      <p class="muted">30-day returns · 2-year warranty</p>
+      <p><a href="#" onclick="openFaqModal();return false;" class="muted" style="text-decoration:underline;cursor:pointer">30-day returns · 2-year warranty</a></p>
     </div>
   </div>
   <div class="footer-bottom">
@@ -110,6 +119,82 @@
 <!-- Payment modal -->
 <div class="modal hidden" id="payModal" role="dialog" aria-modal="true" aria-label="Payment Processing">
   <div class="modal-card" id="payCard"></div>
+</div>
+
+<!-- Account & Orders modal -->
+<div class="modal hidden" id="accountModal" role="dialog" aria-modal="true" aria-label="Account and Orders">
+  <div class="modal-card account-card" id="accountCard"></div>
+</div>
+
+<!-- FAQ & Warranty modal -->
+<div class="modal hidden" id="faqModal" role="dialog" aria-modal="true" aria-label="Warranty and FAQ">
+  <div class="modal-card faq-card">
+    <div class="modal-head">
+      <h3 style="margin:0;font-family:var(--font-ed);font-size:22px">Warranty & Care · FAQ</h3>
+      <button class="icon-btn" onclick="closeFaqModal()" aria-label="Close FAQ modal">✕</button>
+    </div>
+    <div class="modal-body" style="margin-top:14px;display:flex;flex-direction:column;gap:14px;text-align:left">
+      <div class="faq-item">
+        <h4 style="margin:0 0 4px;font-size:14.5px">Garansi 2 Tahun NOMAD</h4>
+        <p class="small muted" style="margin:0">Seluruh produk tas dan apparel NOMAD dilindungi garansi 2 tahun untuk kerusakan resleting, jahitan struktural, dan lapisan water-repellent (DWR).</p>
+      </div>
+      <div class="faq-item">
+        <h4 style="margin:0 0 4px;font-size:14.5px">Kebijakan Pengembalian 30 Hari</h4>
+        <p class="small muted" style="margin:0">Barang dapat ditukar atau dikembalikan dalam 30 hari sejak barang diterima jika belum digunakan dan kelengkapan tag masih utuh.</p>
+      </div>
+      <div class="faq-item">
+        <h4 style="margin:0 0 4px;font-size:14.5px">Metode Pengiriman Simulasi</h4>
+        <p class="small muted" style="margin:0">Pilihan Regular (3–5 hari kerja, gratis pesanan Rp500.000+), Express (1–2 hari kerja), dan Same Day. Seluruh status pengiriman disimulasikan tanpa kurir riil.</p>
+      </div>
+      <div class="faq-item">
+        <h4 style="margin:0 0 4px;font-size:14.5px">Material Berkelanjutan</h4>
+        <p class="small muted" style="margin:0">Menggunakan 900D recycled nylon dengan PFC-free DWR coating untuk ketahanan cuaca maksimal dan jejak karbon minimal.</p>
+      </div>
+    </div>
+    <div style="margin-top:20px;text-align:center">
+      <button class="btn btn-dark btn-block btn-sm" onclick="closeFaqModal()">TUTUP</button>
+    </div>
+  </div>
+</div>
+
+<!-- Judge Demo Fast-Track Dock -->
+<div class="judge-dock" id="judgeDock">
+  <button class="judge-dock-toggle" id="judgeDockToggle" aria-label="Toggle Judge Demo Controls" title="Buka Kontrol Demo Juri">
+    <span class="judge-dock-icon">⚖️</span>
+    <span class="judge-dock-label">Judge Demo Controls</span>
+  </button>
+  <div class="judge-dock-panel" id="judgeDockPanel">
+    <div class="judge-dock-head">
+      <div>
+        <div class="judge-dock-title">⚖️ Judge Demo Controls</div>
+        <div class="judge-dock-sub">Demonstrasi Cepat Semua Tahap & Verifikasi</div>
+      </div>
+      <button class="icon-btn judge-dock-close" id="judgeDockClose" aria-label="Minimize Demo Controls">✕</button>
+    </div>
+    <div class="judge-dock-body">
+      <div class="judge-dock-group">
+        <span class="judge-dock-lbl">Checkout & Keranjang</span>
+        <div class="judge-dock-btns">
+          <button type="button" class="btn btn-ghost btn-xs" onclick="seedWeekendKit()">🛒 Isi Weekend Kit (Bundle 5%)</button>
+          <button type="button" class="btn btn-ghost btn-xs" onclick="autoFillCheckout()">📝 Auto-Fill Form Checkout</button>
+        </div>
+      </div>
+      <div class="judge-dock-group">
+        <span class="judge-dock-lbl">Pelacakan / Tracking Demo</span>
+        <div class="judge-dock-btns">
+          <button type="button" class="btn btn-dark btn-xs" onclick="seedDemoOrder()">⚡ Buat Order Demo Siap Lacak</button>
+          <button type="button" class="btn btn-terra btn-xs" onclick="advanceActiveOrder()">⏩ Majukan Tahap Pengiriman</button>
+        </div>
+      </div>
+      <div class="judge-dock-group">
+        <span class="judge-dock-lbl">Penyimpanan Browser (localStorage)</span>
+        <div class="judge-dock-btns">
+          <button type="button" class="btn btn-ghost btn-xs btn-danger-text" onclick="resetDemoData()">🔄 Reset Data Demo (Clean Slate)</button>
+        </div>
+      </div>
+      <p class="judge-dock-footnote">Data demo tersimpan lokal di browser (simulasi). Tidak ada koneksi server backend.</p>
+    </div>
+  </div>
 </div>
 
 <script src="./app.js"></script>

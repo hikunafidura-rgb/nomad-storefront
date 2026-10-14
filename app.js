@@ -85,7 +85,14 @@ const PAYMENTS = [
   { id:"cod", name:"COD", desc:"Pay cash when your order arrives", icon:"COD" },
 ];
 const STATUSES = ["Pesanan Dibuat","Pembayaran Berhasil","Pesanan Diproses","Diserahkan ke Kurir","Dalam Pengiriman","Pesanan Sampai"];
-const STATUS_DESC = ["We received your order.","Your simulated payment cleared.","We are packing your gear.","Handed to the courier partner.","On the way to your address.","Delivered. Enjoy the journey."];
+const STATUS_DESC = [
+  "Pesanan dicatat di sistem demo NOMAD.",
+  "Pembayaran simulasi telah terverifikasi.",
+  "Barang sedang diperiksa dan dikemas di fasilitas logistik.",
+  "Paket diserahkan ke mitra kurir (simulasi demo).",
+  "Paket dalam perjalanan menuju alamat tujuan.",
+  "Paket telah tiba di tujuan. Terima kasih telah memilih NOMAD!"
+];
 const COUPONS = { "NOMAD10":0.10 };
 const BUNDLE_RATE = 0.05;
 // Complete-kit sets detected from cart contents (greedy, shared units consumed once).
@@ -161,16 +168,51 @@ const store = {
   get:(k,f)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):f }catch{ return f } },
   set:(k,v)=>{ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){ console.warn("Storage set error",e); } }
 };
-const getCart=()=>store.get("nomad_cart",[]).filter(i=>i&&byId(i.pid)&&Number.isInteger(i.qty)&&i.qty>0);
+const getCart=()=>{
+  const raw=store.get("nomad_cart",[]);
+  if(!Array.isArray(raw)) return [];
+  return raw.filter(i=>i&&typeof i==="object"&&byId(i.pid)&&Number.isInteger(i.qty)&&i.qty>0);
+};
 const setCart=(c)=>{store.set("nomad_cart",c);updateBadges();renderDrawer();};
-const getWish=()=>store.get("nomad_wish",[]);
+const getWish=()=>{
+  const raw=store.get("nomad_wish",[]);
+  if(!Array.isArray(raw)) return [];
+  return raw.filter(id=>typeof id==="string"&&byId(id));
+};
 const setWish=(w)=>{store.set("nomad_wish",w);updateBadges();};
-const getRecent=()=>store.get("nomad_recent",[]);
+const getRecent=()=>{
+  const raw=store.get("nomad_recent",[]);
+  if(!Array.isArray(raw)) return [];
+  return raw.filter(id=>typeof id==="string"&&byId(id));
+};
 const pushRecent=(id)=>{let r=getRecent().filter(x=>x!==id);r.unshift(id);store.set("nomad_recent",r.slice(0,8));};
-const getOrders=()=>store.get("nomad_orders",[]);
-const saveOrder=(o)=>{const a=getOrders();a.unshift(o);store.set("nomad_orders",a);};
-const updateOrder=(o)=>{store.set("nomad_orders",getOrders().map(x=>x.id===o.id?o:x));};
+const getOrders=()=>{
+  const raw=store.get("nomad_orders",[]);
+  if(!Array.isArray(raw)) return [];
+  return raw.filter(o=>o&&typeof o==="object"&&typeof o.id==="string"&&Array.isArray(o.items));
+};
+const saveOrder=(o)=>{
+  if(!o||typeof o!=="object"||!o.id) return;
+  const a=getOrders().filter(x=>x.id!==o.id);
+  a.unshift(o);
+  store.set("nomad_orders",a);
+};
+const updateOrder=(o)=>{
+  if(!o||typeof o!=="object"||!o.id) return;
+  const a=getOrders();
+  const next=a.map(x=>x.id===o.id?{...o}:x);
+  store.set("nomad_orders",next);
+};
 const getCoupon=()=>store.get("nomad_coupon",null);
+
+function formatEventTime(isoString){
+  if(!isoString) return "";
+  try {
+    const d=new Date(isoString);
+    if(isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})+" WIB";
+  } catch { return ""; }
+}
 
 function toast(msg, type=""){
   const w=document.getElementById("toastWrap");
@@ -905,7 +947,12 @@ function bindCheckout(){
   const m=document.getElementById("coMain"); if(!m) return;
   if(co.step===1){
     const v=co.info;
-    m.innerHTML=`<div class="card"><h3>01 — Shipping Information</h3><div class="form-grid">
+    m.innerHTML=`<div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <h3 style="margin:0">01 — Shipping Information</h3>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="autoFillCheckout()" style="padding:6px 12px;font-size:12px">⚡ Auto-Fill Demo Info</button>
+      </div>
+      <div class="form-grid">
       ${[["name","Full Name","text","e.g. Nadya Prameswari"],["phone","Phone Number","tel","e.g. 0812xxxxxxx"],["address","Address","text","Street, building, landmark"],["city","City","text","e.g. Jakarta Selatan"],["province","Province / Region","text","e.g. DKI Jakarta"],["postal","Postal Code","text","e.g. 12430"]].map(f=>`
       <div class="field ${f[0]==="address"?"full":""}" id="fw-${f[0]}"><label for="fi-${f[0]}">${f[1]} *</label><input id="fi-${f[0]}" type="${f[2]}" placeholder="${f[3]}" value="${esc(v[f[0]]||"")}" /><span class="err-msg" role="alert">This field is required</span></div>`).join("")}
       <div class="field full"><label for="fi-notes">Order Notes (optional)</label><textarea id="fi-notes" rows="2" placeholder="Gate code, leave with security, gift wrap…">${esc(v.notes||"")}</textarea></div>
@@ -1075,82 +1122,805 @@ function closePayModal(){
   document.body.style.overflow="";
 }
 window.closePayModal=closePayModal;
+window.finishPayInstantly=()=>{
+  closePayModal();
+  co.step=4; render(); window.scrollTo(0,0);
+  toast(co.pay==="cod"?"Cash on Delivery dikonfirmasi":"Pembayaran berhasil (simulasi)","ok");
+};
+
 window.simulatePay=()=>{
   closePayModal();
   const modal=document.getElementById("payModal"),card=document.getElementById("payCard");
   modal.classList.remove("hidden");
   document.body.style.overflow="hidden";
   const isCod = co.pay==="cod";
-  card.innerHTML=`<div class="spinner"></div><h3 style="margin:0 0 6px">${isCod?"Setting up order…":"Processing payment…"}</h3><p class="muted small">${isCod?"Setting up Cash on Delivery (simulated)":"Contacting "+PAYMENTS.find(p=>p.id===co.pay).name+" (simulated)"}</p>`;
+  card.innerHTML=`<div class="spinner"></div><h3 style="margin:0 0 6px">${isCod?"Menyiapkan pesanan COD…":"Memproses pembayaran…"}</h3><p class="muted small">${isCod?"Menyiapkan Cash on Delivery (simulasi demo)":"Menghubungi "+PAYMENTS.find(p=>p.id===co.pay).name+" (simulasi demo)"}</p><button type="button" class="btn btn-ghost btn-xs" style="margin-top:14px" onclick="finishPayInstantly()">⚡ Bayar Instan (Lewati Tunggu)</button>`;
   payTimer1=setTimeout(()=>{
-    card.innerHTML=`<div class="check-big">✓</div><h3 style="margin:0 0 6px">${isCod?"Order Method Confirmed":"Payment Successful"}</h3><p class="muted small">Creating your order…</p>`;
+    card.innerHTML=`<div class="check-big">✓</div><h3 style="margin:0 0 6px">${isCod?"Metode COD Dikonfirmasi":"Pembayaran Berhasil"}</h3><p class="muted small">Membuat data pesanan Anda…</p>`;
     payTimer2=setTimeout(()=>{
-      closePayModal();
-      co.step=4; render(); window.scrollTo(0,0);
-      toast(isCod?"Cash on Delivery confirmed":"Payment successful","ok");
-    },900);
-  },1700);
+      finishPayInstantly();
+    },450);
+  },650);
 };
+
 let isPlacingOrder=false;
 window.placeOrder=()=>{
   if(isPlacingOrder) return;
-  if(!getCart().length){ toast("Your bag is empty","err"); return; }
+  if(!getCart().length){ toast("Keranjang belanja kosong","err"); return; }
+  
+  // Validate checkout data
+  const info=co.info||{};
+  const required=["name","phone","address","city","province","postal"];
+  const invalidFields=required.filter(f=>!info[f]||!String(info[f]).trim());
+  const phoneDigits=(info.phone||"").replace(/\D/g,"");
+  if(invalidFields.length>0||phoneDigits.length<9){
+    toast("Harap lengkapi semua data pengiriman dengan benar","err");
+    co.step=1;
+    render();
+    return;
+  }
+
   isPlacingOrder=true;
-  const t=totals(co.ship);
-  const id="#NMD-"+Math.floor(100000+Math.random()*900000);
-  const order={ id, items:getCart(), info:{...co.info}, ship:co.ship, pay:co.pay,
-    sub:t.sub, disc:t.disc, bundle:t.bundle, shipCost:t.ship, total:t.total, coupon:getCoupon(),
-    status:2, created:new Date().toISOString(), eta: co.ship==="sameday"?"Today":co.ship==="express"?"1–2 business days":"3–5 business days" };
-  saveOrder(order); setCart([]); store.set("nomad_coupon",null); co={step:1,info:co.info,ship:"express",pay:"qris"};
-  isPlacingOrder=false;
-  go("#/order/"+encodeURIComponent(id));
+  try{
+    const t=totals(co.ship);
+    const id="#NMD-"+Math.floor(100000+Math.random()*900000);
+    const trackingNumber="TRK-NMD-"+Math.floor(100000+Math.random()*900000);
+    const now=new Date().toISOString();
+    const sh=SHIPPING.find(s=>s.id===co.ship)||SHIPPING[0];
+    const etaText=sh.id==="sameday"?"Hari ini (Same Day · Kurir simulasi)":sh.id==="express"?"1–2 hari kerja (Express · Kurir simulasi)":"3–5 hari kerja (Reguler · Kurir simulasi)";
+
+    const order={
+      id,
+      trackingNumber,
+      items:JSON.parse(JSON.stringify(getCart())),
+      info:{...co.info},
+      ship:co.ship,
+      pay:co.pay,
+      sub:t.sub,
+      disc:t.disc,
+      bundle:t.bundle,
+      shipCost:t.ship,
+      total:t.total,
+      coupon:getCoupon(),
+      status:0, // Initial stage: Pesanan Dibuat
+      created:now,
+      eta:etaText,
+      events:[
+        {
+          stage:0,
+          title:STATUSES[0],
+          desc:STATUS_DESC[0],
+          timestamp:now,
+          note:"Status pengiriman demo diinisiasi"
+        }
+      ]
+    };
+
+    saveOrder(order);
+
+    // Verify order was saved successfully in storage
+    const verified=findOrder(id);
+    if(!verified){
+      throw new Error("Gagal menyimpan pesanan ke localStorage");
+    }
+
+    // Only clear cart and coupon AFTER successful order creation and save
+    setCart([]);
+    store.set("nomad_coupon",null);
+    co={step:1,info:co.info,ship:"express",pay:"qris"};
+    isPlacingOrder=false;
+
+    toast("Pesanan berhasil dibuat!","ok");
+    go("#/order/"+encodeURIComponent(id));
+  }catch(err){
+    console.error("Order placement failed",err);
+    isPlacingOrder=false;
+    toast("Terjadi kesalahan saat memproses pesanan. Silakan coba lagi.","err");
+  }
 };
 
 /* ---------- ORDER + TRACKING ---------- */
-function findOrder(id){ return getOrders().find(o=>o.id===id); }
+function findOrder(query){
+  if(!query||typeof query!=="string") return null;
+  const q=decodeURIComponent(query).trim().toLowerCase();
+  const cleanQ=q.replace(/^#/,"");
+  return getOrders().find(o=>{
+    if(!o||!o.id) return false;
+    const id=String(o.id).toLowerCase();
+    const cleanId=id.replace(/^#/,"");
+    const trk=String(o.trackingNumber||"").toLowerCase();
+    return id===q||cleanId===cleanQ||trk===q||trk===cleanQ;
+  })||null;
+}
+
 function renderOrder(id){
   const o=findOrder(decodeURIComponent(id));
-  if(!o) return `<div class="page center"><h1>Order not found</h1><p class="sub">Orders live in this browser session (localStorage).</p><a class="btn btn-dark" href="#/shop">CONTINUE SHOPPING</a></div>`;
-  const sh=SHIPPING.find(s=>s.id===o.ship), py=PAYMENTS.find(p=>p.id===o.pay);
-  return `<div class="page" style="max-width:760px"><div class="confirm-hero">
-    <div class="check-big">✓</div><h1>Order Confirmed</h1><p class="sub">Thank you, ${esc(o.info.name.split(" ")[0]||"traveler")}. Your gear is being prepared.</p>
-    <h2 style="font-family:var(--font-ed)">${o.id}</h2></div>
-    <div class="card"><h3>Items</h3>${o.items.map(i=>{const p=byId(i.pid);return `<div class="kv"><span>${p?p.name:i.pid} <span class="muted">× ${i.qty} · ${i.color}${i.size?" · "+i.size:""}</span></span><b>${p?rp(p.price*i.qty):""}</b></div>`;}).join("")}
-      <div class="kv"><span>Subtotal</span><span>${rp(o.sub)}</span></div>
-      ${o.disc?`<div class="kv kit-save"><span>Discount ${o.coupon||""}</span><span>− ${rp(o.disc)}</span></div>`:""}${o.bundle?`<div class="kv kit-save"><span>Bundle savings (5%)</span><span>− ${rp(o.bundle)}</span></div>`:""}
-      <div class="kv"><span>Shipping · ${sh.name}</span><span>${o.shipCost===0?"FREE":rp(o.shipCost)}</span></div>
-      <div class="kv total"><span>Total paid</span><span>${rp(o.total)}</span></div></div>
-    <div class="order-box">
-      <div><b>Shipping address</b>${esc(o.info.name)}<br/>${esc(o.info.address)}, ${esc(o.info.city)} ${esc(o.info.postal)}<br/>${esc(o.info.phone)}</div>
-      <div><b>Payment · Shipping</b>${py.name} (simulated)<br/>${sh.name} · ${o.eta}</div>
-      <div><b>Status</b>${STATUSES[o.status]}</div>
-      <div><b>Need help?</b>hello@nomad.co.id</div>
+  if(!o){
+    return `<div class="page center" style="max-width:560px">
+      <div class="empty-icon" style="font-size:36px;margin-bottom:12px">📦</div>
+      <h1>Order Not Found</h1>
+      <p class="sub">Pesanan tidak ditemukan di sesi browser ini (localStorage demo).</p>
+      <div class="btn-row" style="justify-content:center">
+        <a class="btn btn-dark" href="#/shop">CONTINUE SHOPPING</a>
+        <a class="btn btn-ghost" href="#/tracking">TRACK ANOTHER ORDER</a>
+      </div>
+    </div>`;
+  }
+  const sh=SHIPPING.find(s=>s.id===o.ship)||SHIPPING[0];
+  const py=PAYMENTS.find(p=>p.id===o.pay)||PAYMENTS[0];
+  const trk=o.trackingNumber||("TRK-"+o.id.replace("#",""));
+  const currStatus=STATUSES[o.status||0]||STATUSES[0];
+  const currDesc=STATUS_DESC[o.status||0]||"";
+
+  return `<div class="page" style="max-width:760px">
+    <div class="confirm-hero">
+      <div class="check-big">✓</div>
+      <h1>Order Confirmed</h1>
+      <p class="sub">Thank you, ${esc(o.info.name?o.info.name.split(" ")[0]:"traveler")}. Your simulated order has been registered.</p>
+      <div class="confirm-badge-wrap">
+        <span class="order-id-tag">Order ID: <b>${esc(o.id)}</b> <button type="button" class="copy-btn" style="margin-left:6px" onclick="copyText('${esc(o.id)}', 'Order ID disalin!')">Copy</button></span>
+        <span class="tracking-tag">Tracking No: <b>${esc(trk)}</b> <button type="button" class="copy-btn" style="margin-left:6px" onclick="copyText('${esc(trk)}', 'No. Resi disalin!')">Copy</button></span>
+      </div>
     </div>
-    <div class="btn-row" style="margin-top:22px"><a href="#/tracking/${encodeURIComponent(o.id)}" class="btn btn-dark" style="flex:1">TRACK ORDER</a><a href="#/shop" class="btn btn-ghost" style="flex:1">CONTINUE SHOPPING</a></div></div>`;
+
+    <!-- Live Status Banner -->
+    <div class="card confirm-stage-banner">
+      <div class="csb-info">
+        <span class="csb-label">Status Pengiriman Demo Saat Ini</span>
+        <h3 class="csb-title">${esc(currStatus)}</h3>
+        <p class="small muted" style="margin:0">${esc(currDesc)}</p>
+      </div>
+      <a href="#/tracking/${encodeURIComponent(o.id)}" class="btn btn-dark btn-sm">Buka Pelacakan Langsung →</a>
+    </div>
+
+    <!-- Order Items Summary -->
+    <div class="card">
+      <h3>Order Summary</h3>
+      ${o.items.map(i=>{
+        const p=byId(i.pid);
+        return `<div class="kv"><span>${p?p.name:i.pid} <span class="muted">× ${i.qty} · ${esc(i.color||"")}${i.size?" · "+esc(i.size):""}</span></span><b>${p?rp(p.price*i.qty):""}</b></div>`;
+      }).join("")}
+      <div class="kv"><span>Subtotal</span><span>${rp(o.sub)}</span></div>
+      ${o.disc?`<div class="kv kit-save"><span>Discount (${esc(o.coupon||"Kupon")})</span><span>− ${rp(o.disc)}</span></div>`:""}
+      ${o.bundle?`<div class="kv kit-save"><span>Bundle savings (5%)</span><span>− ${rp(o.bundle)}</span></div>`:""}
+      <div class="kv"><span>Shipping · ${esc(sh.name)} (${esc(o.eta)})</span><span>${o.shipCost===0?"FREE":rp(o.shipCost)}</span></div>
+      <div class="kv total"><span>Total paid</span><span>${rp(o.total)}</span></div>
+    </div>
+
+    <!-- Details Box -->
+    <div class="order-box">
+      <div>
+        <b>Shipping Address</b>
+        ${esc(o.info.name)}<br/>
+        ${esc(o.info.address)}, ${esc(o.info.city)} ${esc(o.info.postal)}<br/>
+        ${esc(o.info.phone)}
+      </div>
+      <div>
+        <b>Shipping Method & Estimate</b>
+        ${esc(sh.name)} (Kurir simulasi)<br/>
+        ${esc(o.eta)}
+      </div>
+      <div>
+        <b>Payment Method</b>
+        ${esc(py.name)} (Simulasi)<br/>
+        <span class="small" style="color:#256B3D;font-weight:600">✓ Pembayaran Terverifikasi</span>
+      </div>
+      <div>
+        <b>Penyimpanan Sesi Demo</b>
+        Tersimpan di browser localStorage<br/>
+        <span class="small muted">Data persist saat refresh halaman</span>
+      </div>
+    </div>
+
+    <div class="btn-row" style="margin-top:22px">
+      <a href="#/tracking/${encodeURIComponent(o.id)}" class="btn btn-dark" style="flex:1">TRACK ORDER →</a>
+      <a href="#/shop" class="btn btn-ghost" style="flex:1">CONTINUE SHOPPING</a>
+    </div>
+  </div>`;
 }
+
+window.handleTrackSearch=(e)=>{
+  if(e) e.preventDefault();
+  const input=document.getElementById("trackSearchInput");
+  const msg=document.getElementById("trackSearchMsg");
+  const val=(input?input.value:"").trim();
+  if(!val){
+    if(msg){
+      msg.textContent="Silakan masukkan Order ID atau Nomor Resi demo terlebih dahulu.";
+      msg.className="track-search-msg err";
+      msg.classList.remove("hidden");
+    }
+    return;
+  }
+  const found=findOrder(val);
+  if(found){
+    go("#/tracking/"+encodeURIComponent(found.id));
+  } else {
+    if(msg){
+      msg.innerHTML=`Tidak ditemukan pesanan dengan ID atau No. Resi “<b>${esc(val)}</b>”. Pastikan format nomor pesanan sesuai (misal: <i>#NMD-123456</i> atau <i>TRK-NMD-123456</i>).`;
+      msg.className="track-search-msg err";
+      msg.classList.remove("hidden");
+    }
+  }
+};
+
 function renderTrackingList(){
   const orders=getOrders();
-  if(!orders.length) return `<div class="page center" style="max-width:560px"><h1>Track your order</h1><p class="sub">No orders yet in this session. Place one to see live tracking here.</p><a href="#/shop" class="btn btn-dark">SHOP COLLECTION</a></div>`;
-  return `<div class="page" style="max-width:760px"><h1>Track your order</h1><p class="sub">${orders.length} order${orders.length>1?"s":""} in this session</p>
-  ${orders.map(o=>`<a href="#/tracking/${encodeURIComponent(o.id)}" class="card" style="display:flex;justify-content:space-between;align-items:center;gap:8px 16px;flex-wrap:wrap;margin-bottom:12px"><div><b>${o.id}</b><div class="small muted">${o.items.reduce((s,i)=>s+i.qty,0)} items · ${rp(o.total)} · ${STATUSES[o.status]}</div></div><span class="link-arrow">Track →</span></a>`).join("")}</div>`;
+  return `<div class="page" style="max-width:760px">
+    <h1>Track Your Order</h1>
+    <p class="sub">Pelacakan pengiriman pesanan (simulasi demo interaktif)</p>
+
+    <!-- Search Form -->
+    <div class="card tracking-search-card">
+      <h3 style="margin:0 0 6px">Cari Pesanan</h3>
+      <p class="small muted" style="margin:0">Masukkan Order ID (#NMD-xxxxxx) atau Nomor Resi Demo (TRK-NMD-xxxxxx)</p>
+      <form onsubmit="handleTrackSearch(event)" class="track-search-form">
+        <input id="trackSearchInput" type="text" placeholder="Contoh: #NMD-849102 atau TRK-NMD-..." autocomplete="off" />
+        <button type="submit" class="btn btn-dark btn-sm">LACAK PESANAN</button>
+      </form>
+      <div id="trackSearchMsg" class="track-search-msg hidden"></div>
+    </div>
+
+    <!-- Orders List -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <h3 style="margin:0">Riwayat Pesanan Aktif</h3>
+        <span class="small muted">${orders.length} order${orders.length!==1?"s":""} tersimpan di sesi browser</span>
+      </div>
+
+      ${!orders.length?`
+        <div class="empty center" style="padding:28px 14px">
+          <p class="muted" style="margin-bottom:14px">Belum ada pesanan dalam sesi browser ini. Buat pesanan baru untuk melihat live tracking simulasi.</p>
+          <div class="btn-row" style="justify-content:center;gap:10px;flex-wrap:wrap">
+            <a href="#/shop" class="btn btn-dark btn-sm">BELANJA PRODUK</a>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="seedDemoOrder()">⚡ Buat Order Demo Cepat</button>
+          </div>
+        </div>
+      `:`
+        <div style="display:flex;flex-direction:column;gap:12px">
+          ${orders.map(o=>{
+            const trk=o.trackingNumber||("TRK-"+o.id.replace("#",""));
+            const stIdx=typeof o.status==="number"?o.status:0;
+            const stName=STATUSES[stIdx]||STATUSES[0];
+            const dateStr=formatEventTime(o.created);
+            const totalQty=o.items.reduce((s,i)=>s+i.qty,0);
+            return `
+              <div class="account-order-row" style="padding:14px 16px">
+                <div style="flex:1;min-width:200px">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <b style="font-size:15px">${esc(o.id)}</b>
+                    <span class="small muted">Resi: ${esc(trk)}</span>
+                  </div>
+                  <div class="small muted" style="margin:4px 0">${totalQty} item · Total ${rp(o.total)}${dateStr?" · "+dateStr:""}</div>
+                  <div class="small" style="color:var(--terra);font-weight:700">● ${esc(stName)} (Tahap ${stIdx+1} dari 6)</div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <a href="#/order/${encodeURIComponent(o.id)}" class="btn btn-ghost btn-xs">Receipt</a>
+                  <a href="#/tracking/${encodeURIComponent(o.id)}" class="btn btn-dark btn-sm">Lacak Detail →</a>
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `}
+    </div>
+  </div>`;
 }
+
+const WEIGHT_MAP={
+  "daypack-24":980, "trail-sling":320, "travel-organizer":280,
+  "insulated-bottle":440, "rain-jacket":380, "packing-cubes":240,
+  "travel-cap":85, "tech-pouch":310
+};
+function calcOrderWeight(items){
+  if(!Array.isArray(items)||!items.length) return "0.65";
+  const grams=items.reduce((sum,item)=>sum+(WEIGHT_MAP[item.pid]||250)*(item.qty||1),0);
+  return (grams/1000).toFixed(2);
+}
+
+function formatDateEstimate(shipId, createdIso){
+  try{
+    const d=createdIso?new Date(createdIso):new Date();
+    const opt={day:"numeric",month:"short",year:"numeric"};
+    if(shipId==="sameday"){
+      return `Hari ini (${d.toLocaleDateString("id-ID",opt)} sebelum 19.00 WIB)`;
+    } else if(shipId==="express"){
+      const d1=new Date(d); d1.setDate(d1.getDate()+1);
+      const d2=new Date(d); d2.setDate(d2.getDate()+2);
+      return `${d1.toLocaleDateString("id-ID",{day:"numeric",month:"short"})} – ${d2.toLocaleDateString("id-ID",opt)}`;
+    } else {
+      const d1=new Date(d); d1.setDate(d1.getDate()+3);
+      const d2=new Date(d); d2.setDate(d2.getDate()+5);
+      return `${d1.toLocaleDateString("id-ID",{day:"numeric",month:"short"})} – ${d2.toLocaleDateString("id-ID",opt)}`;
+    }
+  }catch{
+    return shipId==="sameday"?"Hari ini (Same Day demo)":shipId==="express"?"1–2 hari kerja (Express demo)":"3–5 hari kerja (Reguler demo)";
+  }
+}
+
+window.copyTrackingLink=(rawId)=>{
+  const url=window.location.origin+window.location.pathname+"#/tracking/"+encodeURIComponent(rawId);
+  copyText(url,"Tautan pelacakan disalin ke clipboard!");
+};
+
+let autoPlayTimer=null;
+window.toggleAutoPlay=(rawId)=>{
+  if(autoPlayTimer){
+    clearInterval(autoPlayTimer);
+    autoPlayTimer=null;
+    toast("Simulasi otomatis dihentikan","ok");
+    render(false);
+    return;
+  }
+  const o=findOrder(decodeURIComponent(rawId));
+  if(!o) return;
+  if(o.status>=STATUSES.length-1){
+    toast("Pesanan sudah berstatus 'Pesanan Sampai'","ok");
+    return;
+  }
+  toast("Memulai simulasi otomatis perjalanan pesanan…","ok");
+  autoPlayTimer=setInterval(()=>{
+    const fresh=findOrder(decodeURIComponent(rawId));
+    if(!fresh||fresh.status>=STATUSES.length-1){
+      clearInterval(autoPlayTimer);
+      autoPlayTimer=null;
+      toast("Simulasi selesai — Paket Telah Sampai!","ok");
+      render(false);
+      return;
+    }
+    advance(rawId);
+  },1100);
+  render(false);
+};
+
+window.jumpToStage=(rawId,targetStage)=>{
+  const o=findOrder(decodeURIComponent(rawId));
+  if(!o) return;
+  const target=Math.max(0,Math.min(STATUSES.length-1,targetStage));
+  if(typeof o.status!=="number") o.status=0;
+  if(!Array.isArray(o.events)) o.events=[];
+  
+  const baseTime=o.created?new Date(o.created).getTime():Date.now();
+  for(let s=0;s<=target;s++){
+    if(!o.events.some(ev=>ev.stage===s)){
+      const evTime=new Date(baseTime+s*3600000).toISOString();
+      o.events.push({
+        stage:s,
+        title:STATUSES[s],
+        desc:STATUS_DESC[s],
+        timestamp:evTime,
+        note:"Tahap simulasi terverifikasi"
+      });
+    }
+  }
+  o.events.sort((a,b)=>a.stage-b.stage);
+  o.status=target;
+  updateOrder(o);
+  toast(`Lompat ke tahap: ${STATUSES[target]}`,"ok");
+  render(false);
+};
+
 function renderTracking(id){
   const o=findOrder(decodeURIComponent(id));
-  if(!o) return renderTrackingList();
-  const sh=SHIPPING.find(s=>s.id===o.ship);
-  return `<div class="page" style="max-width:760px"><div class="crumb"><a href="#/">Home</a> / <a href="#/tracking">Orders</a> / <b style="color:var(--ink)">${o.id}</b></div>
-  <h1>Delivery Tracking</h1><p class="sub">${o.id} · ${sh.name} · Est. ${o.eta}</p>
-  <div class="card"><div class="timeline">
-    ${STATUSES.map((s,i)=>`<div class="tl-item ${i<o.status?"done":""} ${i===o.status?"now":""}"><span class="tl-dot">${i<o.status?"✓":""}</span><b>${s}</b><span>${i<o.status?"Completed":i===o.status?STATUS_DESC[i]+" — current":"Pending"}${i===o.status&&o.status<STATUSES.length-1?"":""}</span></div>`).join("")}
-  </div>
-  ${o.status<STATUSES.length-1?`<button class="btn btn-ghost btn-block" onclick="advance('${encodeURIComponent(o.id)}')">SIMULATE NEXT STATUS → (${STATUSES[o.status+1]})</button>
-  <p class="small muted center">Demo control for judges — advances the order without a backend.</p>`:`<p class="center" style="color:#256B3D;font-weight:700">✓ Delivered — enjoy the journey!</p>`}
-  </div>
-  <div class="card" style="margin-top:14px"><h3>Order contents</h3>${o.items.map(i=>{const p=byId(i.pid);return `<div class="kv"><span>${p?p.name:i.pid} <span class="muted">× ${i.qty}</span></span><b>${p?rp(p.price*i.qty):""}</b></div>`;}).join("")}
-  <div class="kv"><span>Ship to</span><span style="text-align:right">${esc(o.info.address)}, ${esc(o.info.city)}</span></div></div>
-  <div class="btn-row" style="margin-top:18px"><a href="#/shop" class="btn btn-ghost" style="flex:1">CONTINUE SHOPPING</a><a href="#/order/${encodeURIComponent(o.id)}" class="btn btn-dark" style="flex:1">VIEW RECEIPT</a></div></div>`;
+  if(!o){
+    return `<div class="page center" style="max-width:580px">
+      <div class="empty-icon" style="font-size:36px;margin-bottom:12px">🔍</div>
+      <h1>Pesanan Tidak Ditemukan</h1>
+      <p class="sub">Tidak ditemukan pesanan dengan ID atau Nomor Resi “${esc(decodeURIComponent(id))}” pada penyimpanan peramban ini.</p>
+      <div class="btn-row" style="justify-content:center">
+        <a href="#/tracking" class="btn btn-dark">CARI PESANAN LAIN</a>
+        <a href="#/shop" class="btn btn-ghost">KEMBALI BELANJA</a>
+      </div>
+    </div>`;
+  }
+
+  const sh=SHIPPING.find(s=>s.id===o.ship)||SHIPPING[0];
+  const trk=o.trackingNumber||("TRK-"+o.id.replace("#",""));
+  const curr=typeof o.status==="number"&&!isNaN(o.status)?o.status:0;
+  const isDelivered=curr>=STATUSES.length-1;
+  const etaWindow=formatDateEstimate(o.ship, o.created);
+  const pkgWeight=calcOrderWeight(o.items);
+
+  return `<div class="page" style="max-width:760px">
+    <div class="crumb"><a href="#/">Home</a> / <a href="#/tracking">Orders</a> / <b style="color:var(--ink)">${esc(o.id)}</b></div>
+    <h1>Delivery Tracking</h1>
+    <p class="sub" style="overflow-wrap:anywhere;word-break:break-word">
+      Order: <b>${esc(o.id)}</b> · No. Resi: <b>${esc(trk)}</b> · Layanan: ${esc(sh.name)} (Kurir simulasi)
+    </p>
+
+    <!-- ETA Banner Card -->
+    <div class="track-banner">
+      <div class="track-banner-left">
+        <span class="track-label">Estimasi Pengiriman Simulasi</span>
+        <div class="track-eta-date">${esc(etaWindow)}</div>
+        <span class="small muted">Layanan: <b>${esc(sh.name)}</b> · Asal: Central Hub Jakarta Selatan</span>
+      </div>
+      <div class="track-banner-right">
+        <button type="button" class="btn btn-ghost btn-xs" onclick="copyTrackingLink('${esc(o.id)}')">🔗 Salin Link Pelacakan</button>
+        <button type="button" class="btn btn-ghost btn-xs" onclick="window.print()">🖨 Cetak Nota Digital</button>
+      </div>
+    </div>
+
+    <!-- Timeline Card -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:12px">
+        <h3 style="margin:0">Tahapan Pengiriman Simulasi</h3>
+        <span class="small muted">Status saat ini: <b>${STATUSES[curr]}</b> (${curr+1}/6)</span>
+      </div>
+
+      <div class="timeline">
+        ${STATUSES.map((s,i)=>{
+          const isDone=i<curr;
+          const isNow=i===curr;
+          const ev=(o.events||[]).find(e=>e.stage===i);
+          const timeStr=ev?formatEventTime(ev.timestamp):"";
+          return `
+            <div class="tl-item ${isDone?"done":""} ${isNow?"now":""}">
+              <span class="tl-dot">${isDone?"✓":i+1}</span>
+              <div class="tl-content">
+                <div class="tl-header">
+                  <b>${i+1}. ${s}</b>
+                  ${timeStr?`<span class="tl-time">${esc(timeStr)}</span>`:""}
+                </div>
+                <p class="tl-desc">${isDone?(ev&&ev.desc?esc(ev.desc):STATUS_DESC[i]):isNow?STATUS_DESC[i]:"Menunggu tahap sebelumnya selesai."}</p>
+                <span class="tl-badge ${isDone?"badge-done":isNow?"badge-now":"badge-pending"}">
+                  ${isDone?"Selesai":isNow?"Status Terkini":"Pending"}
+                </span>
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+
+      <!-- Progression Controls / Completion State -->
+      ${!isDelivered?`
+        <div class="demo-advance-panel">
+          <button type="button" class="btn btn-dark btn-block" onclick="advance('${encodeURIComponent(o.id)}')">
+            SIMULASIKAN STATUS BERIKUTNYA → (${STATUSES[curr+1]})
+          </button>
+          <p class="small muted center" style="margin-top:8px">
+            Status pengiriman demo — memajukan tahap simulasi secara berurutan tanpa backend riil.
+          </p>
+
+          <!-- Stage Jumper Pills for Judges -->
+          <div class="stage-jumper-wrap">
+            <span class="small muted" style="display:block;margin-bottom:6px">Lompat Cepat ke Tahap Tertentu (Demo Juri):</span>
+            <div class="stage-pills">
+              ${STATUSES.map((st,idx)=>`
+                <button type="button" class="stage-pill ${idx===curr?"active":""}" onclick="jumpToStage('${encodeURIComponent(o.id)}',${idx})">
+                  ${idx+1}. ${st}
+                </button>
+              `).join("")}
+            </div>
+            <div style="margin-top:10px">
+              <button type="button" class="btn btn-ghost btn-xs" onclick="toggleAutoPlay('${encodeURIComponent(o.id)}')">
+                ${autoPlayTimer?"⏸ Hentikan Putar Otomatis":"▶ Putar Simulasi Otomatis (Auto-Play)"}
+              </button>
+            </div>
+          </div>
+        </div>
+      `:`
+        <div class="completion-card">
+          <div class="check-big" style="background:#E5F2E8;color:#256B3D;margin:0 auto 12px">✓</div>
+          <h3 style="font-family:var(--font-ed);margin:0 0 6px;text-align:center">Paket Telah Tiba di Tujuan (Delivered)</h3>
+          <p class="muted small center" style="margin:0 auto 16px;max-width:48ch">
+            Seluruh tahap pengiriman demo telah selesai. Barang telah diterima dengan aman di alamat pengiriman. Selamat menikmati perjalanan bersama NOMAD!
+          </p>
+          <div class="btn-row" style="justify-content:center;gap:10px;flex-wrap:wrap">
+            <a href="#/shop" class="btn btn-dark btn-sm">KEMBALI BELANJA</a>
+            <a href="#/order/${encodeURIComponent(o.id)}" class="btn btn-ghost btn-sm">LIHAT BUKTI PESANAN</a>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()">🖨 CETAK NOTA DIGITAL</button>
+          </div>
+        </div>
+      `}
+    </div>
+
+    <!-- Logistics Manifest Detail Card -->
+    <div class="card" style="margin-top:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">Manifest Logistik & Kemasan (Simulasi)</h3>
+        <span class="badge sale" style="background:#E5F2E8;color:#256B3D">Garansi 2 Tahun Aktif</span>
+      </div>
+      <div class="manifest-grid">
+        <div class="manifest-item">
+          <b>Fulfillment Hub Asal</b>
+          NOMAD Central Hub BSD, Jakarta Selatan
+        </div>
+        <div class="manifest-item">
+          <b>Destinasi Pengiriman</b>
+          ${esc(o.info.city)}, ${esc(o.info.province)} ${esc(o.info.postal)}
+        </div>
+        <div class="manifest-item">
+          <b>Spesifikasi Kemasan</b>
+          NOMAD FSC Recycled Kraft Box & Eco-Mailer (PFC-Free DWR)
+        </div>
+        <div class="manifest-item">
+          <b>Berat Paket & QC</b>
+          ~${pkgWeight} kg · QC Seal Verified
+        </div>
+      </div>
+    </div>
+
+    <!-- Order Contents Summary -->
+    <div class="card" style="margin-top:14px">
+      <h3>Ringkasan Pesanan</h3>
+      ${o.items.map(i=>{
+        const p=byId(i.pid);
+        return `<div class="kv"><span>${p?p.name:i.pid} <span class="muted">× ${i.qty} · ${esc(i.color||"")}${i.size?" · "+esc(i.size):""}</span></span><b>${p?rp(p.price*i.qty):""}</b></div>`;
+      }).join("")}
+      <div class="kv"><span>Subtotal</span><span>${rp(o.sub)}</span></div>
+      ${o.disc?`<div class="kv kit-save"><span>Diskon</span><span>− ${rp(o.disc)}</span></div>`:""}
+      ${o.bundle?`<div class="kv kit-save"><span>Diskon Bundle (5%)</span><span>− ${rp(o.bundle)}</span></div>`:""}
+      <div class="kv"><span>Ongkos Kirim (${esc(sh.name)})</span><span>${o.shipCost===0?"FREE":rp(o.shipCost)}</span></div>
+      <div class="kv total"><span>Total Pembayaran</span><span>${rp(o.total)}</span></div>
+      <div class="kv" style="margin-top:10px;border-top:1px dashed var(--line);padding-top:10px">
+        <span>Tujuan Pengiriman</span>
+        <span style="text-align:right;max-width:60%">${esc(o.info.address)}, ${esc(o.info.city)} ${esc(o.info.postal)}<br/><span class="muted">Penerima: ${esc(o.info.name)} (${esc(o.info.phone)})</span></span>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="btn-row" style="margin-top:18px">
+      <a href="#/shop" class="btn btn-ghost" style="flex:1">KEMBALI BELANJA</a>
+      <a href="#/order/${encodeURIComponent(o.id)}" class="btn btn-dark" style="flex:1">LIHAT BUKTI PESANAN</a>
+      <button type="button" class="btn btn-ghost" style="flex:1" onclick="window.print()">🖨 CETAK NOTA</button>
+      <a href="#/tracking" class="btn btn-ghost" style="flex:1">SEMUA PESANAN</a>
+    </div>
+  </div>`;
 }
-window.advance=(eid)=>{const o=findOrder(decodeURIComponent(eid));if(!o)return;if(o.status<STATUSES.length-1){o.status++;updateOrder(o);toast(STATUSES[o.status],"ok");render(false);}};
+
+window.advance=(eid)=>{
+  const o=findOrder(decodeURIComponent(eid));
+  if(!o){
+    toast("Pesanan tidak ditemukan","err");
+    return;
+  }
+  const curr=typeof o.status==="number"&&!isNaN(o.status)?o.status:0;
+  // Guard: cannot advance beyond Delivered
+  if(curr>=STATUSES.length-1){
+    toast("Pesanan sudah berada di status akhir (Pesanan Sampai)","ok");
+    return;
+  }
+  // Step is strictly +1 (prevents skipped stages and invalid transitions)
+  const nextStage=curr+1;
+  o.status=nextStage;
+
+  if(!Array.isArray(o.events)){
+    o.events=[];
+  }
+  // Prevent duplicate events
+  if(!o.events.some(ev=>ev.stage===nextStage)){
+    o.events.push({
+      stage:nextStage,
+      title:STATUSES[nextStage],
+      desc:STATUS_DESC[nextStage],
+      timestamp:new Date().toISOString(),
+      note:"Status pengiriman demo diperbarui"
+    });
+  }
+
+  updateOrder(o);
+  toast(`Status: ${STATUSES[nextStage]}`,"ok");
+  render(false);
+};
+
+window.autoFillCheckout=()=>{
+  co.info={
+    name:"Nadya Prameswari",
+    phone:"081298765432",
+    address:"Jl. Senopati No. 42, Kebayoran Baru",
+    city:"Jakarta Selatan",
+    province:"DKI Jakarta",
+    postal:"12190",
+    notes:"Tolong titipkan di pos sekuriti jika sedang tidak di tempat."
+  };
+  store.set("nomad_info",co.info);
+  toast("Data pengiriman demo terisi otomatis","ok");
+  if(co.step===1) render(false);
+};
+
+window.seedWeekendKit=()=>{
+  const kitItems=[
+    { pid:"daypack-24", color:"Black", size:null, qty:1 },
+    { pid:"insulated-bottle", color:"Black", size:null, qty:1 },
+    { pid:"travel-organizer", color:"Black", size:null, qty:1 },
+    { pid:"travel-cap", color:"Black", size:null, qty:1 }
+  ];
+  setCart(kitItems);
+  toast("Weekend Kit dimasukkan ke bag — diskon bundle 5% otomatis aktif!","ok");
+  render(false);
+  openCart();
+};
+
+window.seedDemoOrder=()=>{
+  const now=new Date().toISOString();
+  const id="#NMD-"+Math.floor(100000+Math.random()*900000);
+  const trackingNumber="TRK-NMD-"+Math.floor(100000+Math.random()*900000);
+  const items=[
+    { pid:"daypack-24", color:"Black", size:null, qty:1 },
+    { pid:"insulated-bottle", color:"Black", size:null, qty:1 }
+  ];
+  const sub=649000+249000;
+  const shipCost=0; // Free Regular shipping for >500k
+  const order={
+    id,
+    trackingNumber,
+    items,
+    info:{
+      name:"Nadya Prameswari",
+      phone:"081298765432",
+      address:"Jl. Senopati No. 42, Kebayoran Baru",
+      city:"Jakarta Selatan",
+      province:"DKI Jakarta",
+      postal:"12190",
+      notes:"Demo order cepat untuk juri"
+    },
+    ship:"regular",
+    pay:"qris",
+    sub,
+    disc:0,
+    bundle:0,
+    shipCost,
+    total:sub+shipCost,
+    coupon:null,
+    status:0,
+    created:now,
+    eta:"3–5 hari kerja (Reguler · Kurir simulasi)",
+    events:[
+      {
+        stage:0,
+        title:STATUSES[0],
+        desc:STATUS_DESC[0],
+        timestamp:now,
+        note:"Pesanan cepat demo berhasil dibuat"
+      }
+    ]
+  };
+  saveOrder(order);
+  toast("Order demo berhasil dibuat!","ok");
+  go("#/tracking/"+encodeURIComponent(id));
+};
+
+window.advanceActiveOrder=()=>{
+  const { seg }=parseHash();
+  let orderId="";
+  if(seg[0]==="tracking"&&seg[1]){
+    orderId=decodeURIComponent(seg[1]);
+  } else {
+    const orders=getOrders();
+    if(!orders.length){
+      toast("Belum ada pesanan aktif. Klik 'Buat Order Demo' terlebih dahulu.","err");
+      return;
+    }
+    orderId=orders[0].id;
+    go("#/tracking/"+encodeURIComponent(orderId));
+  }
+  advance(orderId);
+};
+
+window.resetDemoData=()=>{
+  if(confirm("Reset seluruh keranjang, wishlist, dan riwayat pesanan demo ke kondisi awal?")){
+    localStorage.removeItem("nomad_cart");
+    localStorage.removeItem("nomad_wish");
+    localStorage.removeItem("nomad_orders");
+    localStorage.removeItem("nomad_coupon");
+    localStorage.removeItem("nomad_recent");
+    updateBadges();
+    toast("Semua data demo telah direset.","ok");
+    go("#/");
+  }
+};
+
+function toggleJudgeDock(){
+  const dock=document.getElementById("judgeDock");
+  if(dock) dock.classList.toggle("open");
+}
+window.toggleJudgeDock=toggleJudgeDock;
+
+// Account Modal
+function openAccountModal(){
+  const modal=document.getElementById("accountModal");
+  if(!modal) return;
+  renderAccountContent();
+  modal.classList.remove("hidden");
+  document.body.style.overflow="hidden";
+}
+window.openAccountModal=openAccountModal;
+
+function closeAccountModal(){
+  const modal=document.getElementById("accountModal");
+  if(modal) modal.classList.add("hidden");
+  document.body.style.overflow="";
+}
+window.closeAccountModal=closeAccountModal;
+
+function renderAccountContent(){
+  const card=document.getElementById("accountCard");
+  if(!card) return;
+  const orders=getOrders();
+  const info=store.get("nomad_info",{
+    name:"Nadya Prameswari",
+    phone:"081298765432",
+    address:"Jl. Senopati No. 42, Kebayoran Baru",
+    city:"Jakarta Selatan",
+    postal:"12190"
+  });
+  card.innerHTML=`
+    <div class="account-header">
+      <div class="account-avatar">NP</div>
+      <div style="flex:1">
+        <h3 style="margin:0 0 2px;font-family:var(--font-ed);font-size:20px">${esc(info.name||"Nadya Prameswari")}</h3>
+        <p class="small muted" style="margin:0">${esc(info.phone||"0812-9876-5432")} · Akun Demo Pembeli</p>
+      </div>
+      <button class="icon-btn" onclick="closeAccountModal()" aria-label="Close">✕</button>
+    </div>
+    <div class="account-section">
+      <h4>Alamat Pengiriman Demo</h4>
+      <p class="small" style="margin:4px 0">${esc(info.address||"Jl. Senopati No. 42")}, ${esc(info.city||"Jakarta Selatan")} ${esc(info.postal||"12190")}</p>
+    </div>
+    <div class="account-section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h4 style="margin:0">Riwayat Pesanan (${orders.length})</h4>
+        ${orders.length?`<a href="#/tracking" onclick="closeAccountModal()" class="small link-arrow">Lihat Semua →</a>`:""}
+      </div>
+      ${!orders.length?`<p class="small muted">Belum ada pesanan dalam sesi browser ini.</p>`:`
+        <div class="account-order-list">
+          ${orders.slice(0,4).map(o=>`
+            <div class="account-order-row">
+              <div>
+                <b>${esc(o.id)}</b>
+                <div class="small muted">${o.items.length} item · ${rp(o.total)}</div>
+                <div class="small" style="color:var(--terra);font-weight:600">${STATUSES[o.status||0]}</div>
+              </div>
+              <a href="#/tracking/${encodeURIComponent(o.id)}" onclick="closeAccountModal()" class="btn btn-ghost btn-sm" style="padding:4px 10px;font-size:12px">Lacak →</a>
+            </div>
+          `).join("")}
+        </div>
+      `}
+    </div>
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn btn-ghost btn-block btn-sm" onclick="seedDemoOrder();closeAccountModal()">⚡ Buat Order Demo Baru</button>
+    </div>
+  `;
+}
+
+// FAQ Modal
+function openFaqModal(){
+  const modal=document.getElementById("faqModal");
+  if(!modal) return;
+  modal.classList.remove("hidden");
+  document.body.style.overflow="hidden";
+}
+window.openFaqModal=openFaqModal;
+
+function closeFaqModal(){
+  const modal=document.getElementById("faqModal");
+  if(modal) modal.classList.add("hidden");
+  document.body.style.overflow="";
+}
+window.closeFaqModal=closeFaqModal;
+
+// Theme Toggle
+function initTheme(){
+  const saved=store.get("nomad_theme","light");
+  applyTheme(saved);
+}
+function applyTheme(theme){
+  const isDark=theme==="dark";
+  document.documentElement.setAttribute("data-theme",isDark?"dark":"light");
+  store.set("nomad_theme",isDark?"dark":"light");
+  const lightIcons=document.querySelectorAll(".theme-icon-light");
+  const darkIcons=document.querySelectorAll(".theme-icon-dark");
+  lightIcons.forEach(el=>el.classList.toggle("hidden",isDark));
+  darkIcons.forEach(el=>el.classList.toggle("hidden",!isDark));
+}
+function toggleTheme(){
+  const current=document.documentElement.getAttribute("data-theme")||"light";
+  const next=current==="dark"?"light":"dark";
+  applyTheme(next);
+  toast(`Mode ${next==="dark"?"Dark (Forest)":"Light (Warm White)"} aktif`,"ok");
+}
+window.toggleTheme=toggleTheme;
 
 /* ---------- master render ---------- */
 function render(scroll=true){
@@ -1206,6 +1976,23 @@ document.querySelectorAll("#mobileMenu a").forEach(a=>a.onclick=()=>{
   document.getElementById("mobileMenu").classList.add("hidden");
   ham.setAttribute("aria-expanded","false");
 });
+
+// Theme and Account controls
+const themeBtn=document.getElementById("themeBtn");
+if(themeBtn) themeBtn.onclick=toggleTheme;
+const accountBtn=document.getElementById("accountBtn");
+if(accountBtn) accountBtn.onclick=openAccountModal;
+const mobAccountLink=document.getElementById("mobAccountLink");
+if(mobAccountLink) mobAccountLink.onclick=(e)=>{ e.preventDefault(); openAccountModal(); };
+const mobFaqLink=document.getElementById("mobFaqLink");
+if(mobFaqLink) mobFaqLink.onclick=(e)=>{ e.preventDefault(); openFaqModal(); };
+
+// Judge Dock controls
+const dockToggle=document.getElementById("judgeDockToggle");
+if(dockToggle) dockToggle.onclick=toggleJudgeDock;
+const dockClose=document.getElementById("judgeDockClose");
+if(dockClose) dockClose.onclick=toggleJudgeDock;
+
 const sInput=document.getElementById("searchInput"), sClear=document.getElementById("searchClear");
 if(sInput && sClear){
   sInput.addEventListener("input", ()=>{ sClear.classList.toggle("hidden", !sInput.value); });
@@ -1232,6 +2019,8 @@ document.addEventListener("keydown",(e)=>{
   if(e.key==="Escape"){
     closeCart();
     closePayModal();
+    closeAccountModal();
+    closeFaqModal();
     document.getElementById("searchBar").classList.add("hidden");
     document.getElementById("mobileMenu").classList.add("hidden");
     ham.setAttribute("aria-expanded","false");
@@ -1249,6 +2038,7 @@ document.querySelectorAll("[data-scroll]").forEach(a=>a.addEventListener("click"
   }
 }));
 
+initTheme();
 updateBadges(); renderDrawer();
 if(getCoupon()==="KIT5") store.set("nomad_coupon",null); // retired: bundle perk is automatic now
 render();
