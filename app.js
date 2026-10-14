@@ -84,14 +84,13 @@ const PAYMENTS = [
   { id:"qris", name:"QRIS", desc:"Scan once from any m-banking / wallet", icon:"QR" },
   { id:"cod", name:"COD", desc:"Pay cash when your order arrives", icon:"COD" },
 ];
-const STATUSES = ["Pesanan Dibuat","Pembayaran Berhasil","Pesanan Diproses","Diserahkan ke Kurir","Dalam Pengiriman","Pesanan Sampai"];
+const STATUSES = ["Pesanan Diproses", "Dikemas", "Dalam Perjalanan", "Sedang Diantar", "Terkirim"];
 const STATUS_DESC = [
-  "Pesanan dicatat di sistem demo NOMAD.",
-  "Pembayaran simulasi telah terverifikasi.",
-  "Barang sedang diperiksa dan dikemas di fasilitas logistik.",
-  "Paket diserahkan ke mitra kurir (simulasi demo).",
-  "Paket dalam perjalanan menuju alamat tujuan.",
-  "Paket telah tiba di tujuan. Terima kasih telah memilih NOMAD!"
+  "Pesanan telah diverifikasi dan masuk antrean sistem gudang NOMAD.",
+  "Barang telah diperiksa dan dikemas rapi dengan material ramah lingkungan di Fulfillment Hub.",
+  "Paket dalam perjalanan antar-hub melalui koridor tol logistik (simulasi demo).",
+  "Kurir simulasi sedang bergerak menuju ke alamat tujuan pengantaran.",
+  "Paket telah tiba dengan selamat di alamat tujuan. Terima kasih telah memilih NOMAD!"
 ];
 const COUPONS = { "NOMAD10":0.10 };
 const BUNDLE_RATE = 0.05;
@@ -1392,7 +1391,7 @@ function renderTrackingList(){
                     <span class="small muted">Resi: ${esc(trk)}</span>
                   </div>
                   <div class="small muted" style="margin:4px 0">${totalQty} item · Total ${rp(o.total)}${dateStr?" · "+dateStr:""}</div>
-                  <div class="small" style="color:var(--terra);font-weight:700">● ${esc(stName)} (Tahap ${stIdx+1} dari 6)</div>
+                  <div class="small" style="color:var(--terra);font-weight:700">● ${esc(stName)} (Tahap ${stIdx+1} dari 5)</div>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center">
                   <a href="#/order/${encodeURIComponent(o.id)}" class="btn btn-ghost btn-xs">Receipt</a>
@@ -1443,65 +1442,342 @@ window.copyTrackingLink=(rawId)=>{
   copyText(url,"Tautan pelacakan disalin ke clipboard!");
 };
 
-let autoPlayTimer=null;
-window.toggleAutoPlay=(rawId)=>{
+/* ---------- INTERACTIVE DELIVERY MAP & TRACKING SYSTEM ---------- */
+const DEMO_ROUTE_COORDS = [
+  [-6.3015, 106.6534], // 0: NOMAD Fulfillment Hub BSD (Pesanan Diproses)
+  [-6.2950, 106.6710], // 1: Packaging & Sort Hub BSD (Dikemas)
+  [-6.2842, 106.7118], // 2: Bintaro Viaduct Corridor
+  [-6.2731, 106.7450], // 3: Pondok Ranji Toll Gateway
+  [-6.2625, 106.7621], // 4: Gerbang Tol Ulujami / Koridor JORR (Dalam Perjalanan)
+  [-6.2512, 106.7805], // 5: Koridor Kebayoran Lama
+  [-6.2442, 106.7938], // 6: Hub Distribusi Kebayoran (Sedang Diantar)
+  [-6.2405, 106.8052], // 7: Koridor Senopati Approach
+  [-6.2383, 106.8124]  // 8: Alamat Tujuan Kebayoran Baru (Terkirim)
+];
+
+// Mapping 5 stages (0 to 4) to coordinate indices in DEMO_ROUTE_COORDS
+const STAGE_WAYPOINT_INDICES = [0, 1, 4, 6, 8];
+
+let trackingMapInstance = null;
+let packageMarker = null;
+let routePolyline = null;
+let traveledPolyline = null;
+let activeTrackingOrderId = null;
+let isMarkerAnimating = false;
+
+function destroyTrackingMap(){
+  if(trackingMapInstance){
+    try{
+      trackingMapInstance.remove();
+    }catch(err){}
+    trackingMapInstance = null;
+    packageMarker = null;
+    routePolyline = null;
+    traveledPolyline = null;
+    activeTrackingOrderId = null;
+    isMarkerAnimating = false;
+  }
+}
+
+function createPackageMarkerIcon(stage){
+  const isDelivered = stage >= STATUSES.length - 1;
+  const label = isDelivered ? "Terkirim ✓" : STATUSES[stage];
+  const pinClass = isDelivered ? "marker-dest" : "marker-pkg";
+  const iconSymbol = isDelivered ? "✓" : "📦";
+  const pulseHtml = isDelivered ? "" : '<div class="marker-pulse"></div>';
+  if(typeof L === "undefined") return null;
+  return L.divIcon({
+    className: "custom-map-marker",
+    html: `${pulseHtml}<div class="marker-pin ${pinClass}" title="Posisi Paket">${iconSymbol}</div><span class="marker-label">${esc(label)}</span>`,
+    iconSize: [40, 48],
+    iconAnchor: [20, 24]
+  });
+}
+
+function renderMapFallbackHtml(currStage){
+  const progressPct = Math.min(100, Math.round((currStage / (STATUSES.length - 1)) * 100));
+  return `
+    <div class="map-fallback">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <span class="small" style="font-weight:700;color:var(--forest)">Simulasi Rute Pengiriman Demo (Mode Diagram)</span>
+        <span class="map-demo-badge"><span class="badge-dot"></span>Simulasi Demo · Bukan GPS Riil</span>
+      </div>
+      <div class="map-fallback-steps">
+        <div class="map-fallback-line"></div>
+        <div class="map-fallback-progress" style="width:${progressPct}%"></div>
+        ${STATUSES.map((st, idx) => {
+          const isDone = idx < currStage;
+          const isNow = idx === currStage;
+          return `<div class="map-fallback-node ${isDone ? "done" : isNow ? "active" : ""}" title="${st}">${isDone ? "✓" : idx + 1}</div>`;
+        }).join("")}
+      </div>
+      <div class="map-fallback-labels">
+        ${STATUSES.map((st, idx) => {
+          const isDone = idx < currStage;
+          const isNow = idx === currStage;
+          return `<div class="map-fallback-label ${isDone ? "done" : isNow ? "active" : ""}">${idx + 1}. ${st}</div>`;
+        }).join("")}
+      </div>
+      <p class="small muted" style="margin:14px auto 0;max-width:48ch;font-size:11px">
+        Fulfillment Hub BSD → Alamat Tujuan (Kebayoran Baru, Jakarta Selatan). Peta interaktif Leaflet akan aktif otomatis saat koneksi tile tersedia.
+      </p>
+    </div>
+  `;
+}
+
+function mountTrackingMap(orderId){
+  const o = findOrder(orderId);
+  if(!o) return;
+  const container = document.getElementById("trackMapCanvas");
+  if(!container) return;
+
+  const curr = typeof o.status === "number" && !isNaN(o.status) ? Math.max(0, Math.min(STATUSES.length - 1, o.status)) : 0;
+
+  // Check if Leaflet is available in current environment
+  if(typeof L === "undefined"){
+    container.innerHTML = renderMapFallbackHtml(curr);
+    return;
+  }
+
+  // If map already exists for this exact order, update marker and traveled polyline
+  if(trackingMapInstance && activeTrackingOrderId === o.id){
+    const targetIdx = STAGE_WAYPOINT_INDICES[curr];
+    if(packageMarker){
+      packageMarker.setIcon(createPackageMarkerIcon(curr));
+      packageMarker.setLatLng(DEMO_ROUTE_COORDS[targetIdx]);
+    }
+    if(traveledPolyline){
+      traveledPolyline.setLatLngs(DEMO_ROUTE_COORDS.slice(0, targetIdx + 1));
+    }
+    return;
+  }
+
+  // Destroy previous map instance
+  destroyTrackingMap();
+  activeTrackingOrderId = o.id;
+
+  try {
+    trackingMapInstance = L.map("trackMapCanvas", {
+      scrollWheelZoom: false,
+      zoomControl: true,
+      attributionControl: true
+    });
+
+    // Add OpenStreetMap tiles with attribution
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+    }).addTo(trackingMapInstance);
+
+    // Full planned route line (terracotta dashed line)
+    routePolyline = L.polyline(DEMO_ROUTE_COORDS, {
+      color: "#B87952",
+      weight: 4,
+      opacity: 0.75,
+      dashArray: "6, 8"
+    }).addTo(trackingMapInstance);
+
+    // Traveled line (solid dark forest)
+    const targetCoordIdx = STAGE_WAYPOINT_INDICES[curr];
+    const traveledCoords = DEMO_ROUTE_COORDS.slice(0, targetCoordIdx + 1);
+    traveledPolyline = L.polyline(traveledCoords, {
+      color: "#18251F",
+      weight: 5,
+      opacity: 0.95
+    }).addTo(trackingMapInstance);
+
+    // Origin Marker (BSD Fulfillment Hub)
+    const originIcon = L.divIcon({
+      className: "custom-map-marker",
+      html: '<div class="marker-pin marker-origin" title="Fulfillment Hub BSD">🏢</div><span class="marker-label">BSD Hub</span>',
+      iconSize: [36, 44],
+      iconAnchor: [18, 22]
+    });
+    L.marker(DEMO_ROUTE_COORDS[0], { icon: originIcon })
+      .bindPopup("<b>NOMAD Fulfillment Hub BSD</b><br/><span style='font-size:11px;color:#666'>Pusat fulfillment logistik & kemasan ramah lingkungan</span>")
+      .addTo(trackingMapInstance);
+
+    // Destination Marker (Customer Address)
+    const destIcon = L.divIcon({
+      className: "custom-map-marker",
+      html: '<div class="marker-pin marker-dest" title="Alamat Tujuan">📍</div><span class="marker-label">Tujuan</span>',
+      iconSize: [36, 44],
+      iconAnchor: [18, 22]
+    });
+    L.marker(DEMO_ROUTE_COORDS[DEMO_ROUTE_COORDS.length - 1], { icon: destIcon })
+      .bindPopup(`<b>Alamat Penerima (Simulasi)</b><br/><span style='font-size:11px;color:#666'>${esc(o.info.address || "Jl. Senopati No. 42")}, ${esc(o.info.city || "Jakarta Selatan")}</span>`)
+      .addTo(trackingMapInstance);
+
+    // Current Package Marker
+    const pkgIcon = createPackageMarkerIcon(curr);
+    packageMarker = L.marker(DEMO_ROUTE_COORDS[targetCoordIdx], {
+      icon: pkgIcon,
+      zIndexOffset: 1000
+    }).bindPopup(`<b>Posisi Paket (Simulasi Demo)</b><br/><span style='font-size:11px;color:#666'>Tahap: <b>${STATUSES[curr]}</b><br/>Bukan GPS riil · Rute peragaan demo</span>`)
+      .addTo(trackingMapInstance);
+
+    // Fit map bounds to entire route
+    trackingMapInstance.fitBounds(routePolyline.getBounds(), {
+      padding: [35, 35]
+    });
+
+    setTimeout(() => {
+      if(trackingMapInstance) trackingMapInstance.invalidateSize();
+    }, 150);
+
+  } catch(err) {
+    console.warn("Leaflet map initialization fallback:", err);
+    container.innerHTML = renderMapFallbackHtml(curr);
+  }
+}
+
+function animatePackageAlongRoute(fromCoordIdx, toCoordIdx, onFinish){
+  if(!packageMarker || !trackingMapInstance || typeof requestAnimationFrame === "undefined"){
+    if(packageMarker && DEMO_ROUTE_COORDS[toCoordIdx]){
+      packageMarker.setLatLng(DEMO_ROUTE_COORDS[toCoordIdx]);
+    }
+    if(traveledPolyline){
+      traveledPolyline.setLatLngs(DEMO_ROUTE_COORDS.slice(0, toCoordIdx + 1));
+    }
+    if(onFinish) onFinish();
+    return;
+  }
+
+  const slice = fromCoordIdx <= toCoordIdx
+    ? DEMO_ROUTE_COORDS.slice(fromCoordIdx, toCoordIdx + 1)
+    : DEMO_ROUTE_COORDS.slice(toCoordIdx, fromCoordIdx + 1).reverse();
+
+  if(slice.length < 2){
+    packageMarker.setLatLng(DEMO_ROUTE_COORDS[toCoordIdx]);
+    if(traveledPolyline){
+      traveledPolyline.setLatLngs(DEMO_ROUTE_COORDS.slice(0, toCoordIdx + 1));
+    }
+    if(onFinish) onFinish();
+    return;
+  }
+
+  isMarkerAnimating = true;
+  const duration = Math.min(1100, Math.max(650, (toCoordIdx - fromCoordIdx) * 200));
+  const startTime = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+  const totalSegs = slice.length - 1;
+
+  function step(timeNow){
+    const elapsed = timeNow - startTime;
+    const progress = Math.min(1, elapsed / duration);
+    // Smooth quadratic easeInOut
+    const ease = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+    const scaled = ease * totalSegs;
+    const segIdx = Math.min(totalSegs - 1, Math.floor(scaled));
+    const subProgress = scaled - segIdx;
+
+    const p0 = slice[segIdx];
+    const p1 = slice[segIdx + 1];
+    const currentLat = p0[0] + (p1[0] - p0[0]) * subProgress;
+    const currentLng = p0[1] + (p1[1] - p0[1]) * subProgress;
+
+    packageMarker.setLatLng([currentLat, currentLng]);
+
+    if(traveledPolyline){
+      const dynamicTraveled = DEMO_ROUTE_COORDS.slice(0, fromCoordIdx).concat(slice.slice(0, segIdx + 1)).concat([[currentLat, currentLng]]);
+      traveledPolyline.setLatLngs(dynamicTraveled);
+    }
+
+    if(progress < 1){
+      requestAnimationFrame(step);
+    } else {
+      packageMarker.setLatLng(DEMO_ROUTE_COORDS[toCoordIdx]);
+      if(traveledPolyline){
+        traveledPolyline.setLatLngs(DEMO_ROUTE_COORDS.slice(0, toCoordIdx + 1));
+      }
+      isMarkerAnimating = false;
+      if(onFinish) onFinish();
+    }
+  }
+
+  requestAnimationFrame(step);
+}
+
+let autoPlayTimer = null;
+window.toggleAutoPlay = (rawId) => {
   if(autoPlayTimer){
     clearInterval(autoPlayTimer);
-    autoPlayTimer=null;
-    toast("Simulasi otomatis dihentikan","ok");
+    autoPlayTimer = null;
+    toast("Simulasi otomatis dihentikan", "ok");
     render(false);
     return;
   }
-  const o=findOrder(decodeURIComponent(rawId));
+  const o = findOrder(decodeURIComponent(rawId));
   if(!o) return;
-  if(o.status>=STATUSES.length-1){
-    toast("Pesanan sudah berstatus 'Pesanan Sampai'","ok");
+  if(o.status >= STATUSES.length - 1){
+    toast("Pesanan sudah berstatus 'Terkirim'", "ok");
     return;
   }
-  toast("Memulai simulasi otomatis perjalanan pesanan…","ok");
-  autoPlayTimer=setInterval(()=>{
-    const fresh=findOrder(decodeURIComponent(rawId));
-    if(!fresh||fresh.status>=STATUSES.length-1){
+  toast("Memulai simulasi otomatis perjalanan paket…", "ok");
+  autoPlayTimer = setInterval(() => {
+    const fresh = findOrder(decodeURIComponent(rawId));
+    if(!fresh || fresh.status >= STATUSES.length - 1){
       clearInterval(autoPlayTimer);
-      autoPlayTimer=null;
-      toast("Simulasi selesai — Paket Telah Sampai!","ok");
+      autoPlayTimer = null;
+      toast("Simulasi selesai — Paket Terkirim!", "ok");
       render(false);
       return;
     }
     advance(rawId);
-  },1100);
+  }, 1200);
   render(false);
 };
 
-window.jumpToStage=(rawId,targetStage)=>{
-  const o=findOrder(decodeURIComponent(rawId));
+window.jumpToStage = (rawId, targetStage) => {
+  const o = findOrder(decodeURIComponent(rawId));
   if(!o) return;
-  const target=Math.max(0,Math.min(STATUSES.length-1,targetStage));
-  if(typeof o.status!=="number") o.status=0;
-  if(!Array.isArray(o.events)) o.events=[];
+  const target = Math.max(0, Math.min(STATUSES.length - 1, targetStage));
+  if(typeof o.status !== "number") o.status = 0;
+  if(!Array.isArray(o.events)) o.events = [];
   
-  const baseTime=o.created?new Date(o.created).getTime():Date.now();
-  for(let s=0;s<=target;s++){
-    if(!o.events.some(ev=>ev.stage===s)){
-      const evTime=new Date(baseTime+s*3600000).toISOString();
+  const baseTime = o.created ? new Date(o.created).getTime() : Date.now();
+  for(let s = 0; s <= target; s++){
+    if(!o.events.some(ev => ev.stage === s)){
+      const evTime = new Date(baseTime + s * 3600000).toISOString();
       o.events.push({
-        stage:s,
-        title:STATUSES[s],
-        desc:STATUS_DESC[s],
-        timestamp:evTime,
-        note:"Tahap simulasi terverifikasi"
+        stage: s,
+        title: STATUSES[s],
+        desc: STATUS_DESC[s],
+        timestamp: evTime,
+        note: "Tahap simulasi terverifikasi"
       });
     }
   }
-  o.events.sort((a,b)=>a.stage-b.stage);
-  o.status=target;
+  o.events.sort((a, b) => a.stage - b.stage);
+  o.status = target;
   updateOrder(o);
-  toast(`Lompat ke tahap: ${STATUSES[target]}`,"ok");
+  destroyTrackingMap();
+  toast(`Lompat ke tahap: ${STATUSES[target]}`, "ok");
+  render(false);
+};
+
+window.replaySimulation = (rawId) => {
+  const o = findOrder(decodeURIComponent(rawId));
+  if(!o) return;
+  o.status = 0;
+  const now = new Date().toISOString();
+  o.events = [
+    {
+      stage: 0,
+      title: STATUSES[0],
+      desc: STATUS_DESC[0],
+      timestamp: now,
+      note: "Simulasi pengiriman diulang dari awal (Replay Demo)"
+    }
+  ];
+  updateOrder(o);
+  destroyTrackingMap();
+  toast("Simulasi pengiriman diulang dari awal!", "ok");
   render(false);
 };
 
 function renderTracking(id){
-  const o=findOrder(decodeURIComponent(id));
+  const o = findOrder(decodeURIComponent(id));
   if(!o){
     return `<div class="page center" style="max-width:580px">
       <div class="empty-icon" style="font-size:36px;margin-bottom:12px">🔍</div>
@@ -1514,12 +1790,12 @@ function renderTracking(id){
     </div>`;
   }
 
-  const sh=SHIPPING.find(s=>s.id===o.ship)||SHIPPING[0];
-  const trk=o.trackingNumber||("TRK-"+o.id.replace("#",""));
-  const curr=typeof o.status==="number"&&!isNaN(o.status)?o.status:0;
-  const isDelivered=curr>=STATUSES.length-1;
-  const etaWindow=formatDateEstimate(o.ship, o.created);
-  const pkgWeight=calcOrderWeight(o.items);
+  const sh = SHIPPING.find(s => s.id === o.ship) || SHIPPING[0];
+  const trk = o.trackingNumber || ("TRK-" + o.id.replace("#", ""));
+  const curr = typeof o.status === "number" && !isNaN(o.status) ? Math.max(0, Math.min(STATUSES.length - 1, o.status)) : 0;
+  const isDelivered = curr >= STATUSES.length - 1;
+  const etaWindow = formatDateEstimate(o.ship, o.created);
+  const pkgWeight = calcOrderWeight(o.items);
 
   return `<div class="page" style="max-width:760px">
     <div class="crumb"><a href="#/">Home</a> / <a href="#/tracking">Orders</a> / <b style="color:var(--ink)">${esc(o.id)}</b></div>
@@ -1527,6 +1803,42 @@ function renderTracking(id){
     <p class="sub" style="overflow-wrap:anywhere;word-break:break-word">
       Order: <b>${esc(o.id)}</b> · No. Resi: <b>${esc(trk)}</b> · Layanan: ${esc(sh.name)} (Kurir simulasi)
     </p>
+
+    <!-- Interactive Simulated Delivery Map Card -->
+    <div class="card track-map-card">
+      <div class="track-map-head">
+        <div>
+          <h3 style="margin:0 0 2px">Peta Perjalanan Paket (Simulasi Demo)</h3>
+          <span class="small muted">Rute pengiriman: Fulfillment Hub BSD → Kebayoran Baru, Jakarta Selatan</span>
+        </div>
+        <span class="map-demo-badge">
+          <span class="badge-dot"></span>
+          Simulasi Demo · Bukan GPS Riil
+        </span>
+      </div>
+
+      <div class="track-map-wrap">
+        <div id="trackMapCanvas"></div>
+      </div>
+
+      <div class="map-legend">
+        <div class="map-legend-item">
+          <span class="legend-dot origin"></span>
+          <span>Asal: Fulfillment Hub BSD</span>
+        </div>
+        <div class="map-legend-item">
+          <span class="legend-dot pkg"></span>
+          <span>Paket: <b id="mapLegendStage">${STATUSES[curr]}</b> (Simulasi)</span>
+        </div>
+        <div class="map-legend-item">
+          <span class="legend-dot dest"></span>
+          <span>Tujuan: ${esc(o.info.city || "Jakarta Selatan")}</span>
+        </div>
+      </div>
+      <p class="small muted" style="margin:10px 0 0;font-size:11px;line-height:1.4">
+        * Peta dan pergerakan penanda di atas merupakan visualisasi demonstrasi simulasi interaktif. Sistem tidak menampilkan koordinat riil atau GPS kurir langsung.
+      </p>
+    </div>
 
     <!-- ETA Banner Card -->
     <div class="track-banner">
@@ -1541,30 +1853,30 @@ function renderTracking(id){
       </div>
     </div>
 
-    <!-- Timeline Card -->
+    <!-- Timeline Card (5 Stages) -->
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:12px">
         <h3 style="margin:0">Tahapan Pengiriman Simulasi</h3>
-        <span class="small muted">Status saat ini: <b>${STATUSES[curr]}</b> (${curr+1}/6)</span>
+        <span class="small muted" id="currStageLabel">Status saat ini: <b>${STATUSES[curr]}</b> (${curr + 1}/5)</span>
       </div>
 
-      <div class="timeline">
-        ${STATUSES.map((s,i)=>{
-          const isDone=i<curr;
-          const isNow=i===curr;
-          const ev=(o.events||[]).find(e=>e.stage===i);
-          const timeStr=ev?formatEventTime(ev.timestamp):"";
+      <div class="timeline" id="trackingTimeline">
+        ${STATUSES.map((s, i) => {
+          const isDone = i < curr;
+          const isNow = i === curr;
+          const ev = (o.events || []).find(e => e.stage === i);
+          const timeStr = ev ? formatEventTime(ev.timestamp) : "";
           return `
-            <div class="tl-item ${isDone?"done":""} ${isNow?"now":""}">
-              <span class="tl-dot">${isDone?"✓":i+1}</span>
+            <div class="tl-item ${isDone ? "done" : ""} ${isNow ? "now" : ""}" data-stage="${i}">
+              <span class="tl-dot">${isDone ? "✓" : i + 1}</span>
               <div class="tl-content">
                 <div class="tl-header">
-                  <b>${i+1}. ${s}</b>
-                  ${timeStr?`<span class="tl-time">${esc(timeStr)}</span>`:""}
+                  <b>${i + 1}. ${s}</b>
+                  ${timeStr ? `<span class="tl-time">${esc(timeStr)}</span>` : ""}
                 </div>
-                <p class="tl-desc">${isDone?(ev&&ev.desc?esc(ev.desc):STATUS_DESC[i]):isNow?STATUS_DESC[i]:"Menunggu tahap sebelumnya selesai."}</p>
-                <span class="tl-badge ${isDone?"badge-done":isNow?"badge-now":"badge-pending"}">
-                  ${isDone?"Selesai":isNow?"Status Terkini":"Pending"}
+                <p class="tl-desc">${isDone ? (ev && ev.desc ? esc(ev.desc) : STATUS_DESC[i]) : isNow ? STATUS_DESC[i] : "Menunggu tahap sebelumnya selesai."}</p>
+                <span class="tl-badge ${isDone ? "badge-done" : isNow ? "badge-now" : "badge-pending"}">
+                  ${isDone ? "Selesai" : isNow ? "Status Terkini" : "Pending"}
                 </span>
               </div>
             </div>
@@ -1573,41 +1885,45 @@ function renderTracking(id){
       </div>
 
       <!-- Progression Controls / Completion State -->
-      ${!isDelivered?`
+      ${!isDelivered ? `
         <div class="demo-advance-panel">
-          <button type="button" class="btn btn-dark btn-block" onclick="advance('${encodeURIComponent(o.id)}')">
-            SIMULASIKAN STATUS BERIKUTNYA → (${STATUSES[curr+1]})
+          <button type="button" class="btn btn-dark btn-block" id="btnAdvanceSim" onclick="advance('${encodeURIComponent(o.id)}')">
+            LANJUTKAN SIMULASI PENGIRIMAN → (${STATUSES[curr + 1]})
           </button>
           <p class="small muted center" style="margin-top:8px">
-            Status pengiriman demo — memajukan tahap simulasi secara berurutan tanpa backend riil.
+            Status pengiriman demo — memajukan tahap simulasi secara berurutan dan menggerakkan paket di peta.
           </p>
 
-          <!-- Stage Jumper Pills for Judges -->
+          <!-- Stage Jumper Pills for Competition Judges -->
           <div class="stage-jumper-wrap">
             <span class="small muted" style="display:block;margin-bottom:6px">Lompat Cepat ke Tahap Tertentu (Demo Juri):</span>
-            <div class="stage-pills">
-              ${STATUSES.map((st,idx)=>`
-                <button type="button" class="stage-pill ${idx===curr?"active":""}" onclick="jumpToStage('${encodeURIComponent(o.id)}',${idx})">
-                  ${idx+1}. ${st}
+            <div class="stage-pills" id="stageJumperPills">
+              ${STATUSES.map((st, idx) => `
+                <button type="button" class="stage-pill ${idx === curr ? "active" : ""}" onclick="jumpToStage('${encodeURIComponent(o.id)}', ${idx})">
+                  ${idx + 1}. ${st}
                 </button>
               `).join("")}
             </div>
-            <div style="margin-top:10px">
+            <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
               <button type="button" class="btn btn-ghost btn-xs" onclick="toggleAutoPlay('${encodeURIComponent(o.id)}')">
-                ${autoPlayTimer?"⏸ Hentikan Putar Otomatis":"▶ Putar Simulasi Otomatis (Auto-Play)"}
+                ${autoPlayTimer ? "⏸ Hentikan Putar Otomatis" : "▶ Putar Simulasi Otomatis (Auto-Play)"}
+              </button>
+              <button type="button" class="btn btn-ghost btn-xs" onclick="replaySimulation('${encodeURIComponent(o.id)}')">
+                ↺ Ulangi Simulasi (Replay)
               </button>
             </div>
           </div>
         </div>
-      `:`
+      ` : `
         <div class="completion-card">
           <div class="check-big" style="background:#E5F2E8;color:#256B3D;margin:0 auto 12px">✓</div>
-          <h3 style="font-family:var(--font-ed);margin:0 0 6px;text-align:center">Paket Telah Tiba di Tujuan (Delivered)</h3>
+          <h3 style="font-family:var(--font-ed);margin:0 0 6px;text-align:center">Paket Telah Tiba di Tujuan (Terkirim)</h3>
           <p class="muted small center" style="margin:0 auto 16px;max-width:48ch">
             Seluruh tahap pengiriman demo telah selesai. Barang telah diterima dengan aman di alamat pengiriman. Selamat menikmati perjalanan bersama NOMAD!
           </p>
           <div class="btn-row" style="justify-content:center;gap:10px;flex-wrap:wrap">
             <a href="#/shop" class="btn btn-dark btn-sm">KEMBALI BELANJA</a>
+            <button type="button" class="btn btn-terra btn-sm" onclick="replaySimulation('${encodeURIComponent(o.id)}')">↺ ULANGI SIMULASI (REPLAY)</button>
             <a href="#/order/${encodeURIComponent(o.id)}" class="btn btn-ghost btn-sm">LIHAT BUKTI PESANAN</a>
             <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()">🖨 CETAK NOTA DIGITAL</button>
           </div>
@@ -1624,7 +1940,7 @@ function renderTracking(id){
       <div class="manifest-grid">
         <div class="manifest-item">
           <b>Fulfillment Hub Asal</b>
-          NOMAD Central Hub BSD, Jakarta Selatan
+          NOMAD Central Hub BSD, Tangerang Selatan
         </div>
         <div class="manifest-item">
           <b>Destinasi Pengiriman</b>
@@ -1644,14 +1960,14 @@ function renderTracking(id){
     <!-- Order Contents Summary -->
     <div class="card" style="margin-top:14px">
       <h3>Ringkasan Pesanan</h3>
-      ${o.items.map(i=>{
-        const p=byId(i.pid);
-        return `<div class="kv"><span>${p?p.name:i.pid} <span class="muted">× ${i.qty} · ${esc(i.color||"")}${i.size?" · "+esc(i.size):""}</span></span><b>${p?rp(p.price*i.qty):""}</b></div>`;
+      ${o.items.map(i => {
+        const p = byId(i.pid);
+        return `<div class="kv"><span>${p ? p.name : i.pid} <span class="muted">× ${i.qty} · ${esc(i.color || "")}${i.size ? " · " + esc(i.size) : ""}</span></span><b>${p ? rp(p.price * i.qty) : ""}</b></div>`;
       }).join("")}
       <div class="kv"><span>Subtotal</span><span>${rp(o.sub)}</span></div>
-      ${o.disc?`<div class="kv kit-save"><span>Diskon</span><span>− ${rp(o.disc)}</span></div>`:""}
-      ${o.bundle?`<div class="kv kit-save"><span>Diskon Bundle (5%)</span><span>− ${rp(o.bundle)}</span></div>`:""}
-      <div class="kv"><span>Ongkos Kirim (${esc(sh.name)})</span><span>${o.shipCost===0?"FREE":rp(o.shipCost)}</span></div>
+      ${o.disc ? `<div class="kv kit-save"><span>Diskon</span><span>− ${rp(o.disc)}</span></div>` : ""}
+      ${o.bundle ? `<div class="kv kit-save"><span>Diskon Bundle (5%)</span><span>− ${rp(o.bundle)}</span></div>` : ""}
+      <div class="kv"><span>Ongkos Kirim (${esc(sh.name)})</span><span>${o.shipCost === 0 ? "FREE" : rp(o.shipCost)}</span></div>
       <div class="kv total"><span>Total Pembayaran</span><span>${rp(o.total)}</span></div>
       <div class="kv" style="margin-top:10px;border-top:1px dashed var(--line);padding-top:10px">
         <span>Tujuan Pengiriman</span>
@@ -1669,39 +1985,111 @@ function renderTracking(id){
   </div>`;
 }
 
-window.advance=(eid)=>{
-  const o=findOrder(decodeURIComponent(eid));
+window.advance = (eid) => {
+  const o = findOrder(decodeURIComponent(eid));
   if(!o){
-    toast("Pesanan tidak ditemukan","err");
+    toast("Pesanan tidak ditemukan", "err");
     return;
   }
-  const curr=typeof o.status==="number"&&!isNaN(o.status)?o.status:0;
+  const curr = typeof o.status === "number" && !isNaN(o.status) ? o.status : 0;
   // Guard: cannot advance beyond Delivered
-  if(curr>=STATUSES.length-1){
-    toast("Pesanan sudah berada di status akhir (Pesanan Sampai)","ok");
+  if(curr >= STATUSES.length - 1){
+    toast("Pesanan sudah berada di status akhir (Terkirim)", "ok");
     return;
   }
   // Step is strictly +1 (prevents skipped stages and invalid transitions)
-  const nextStage=curr+1;
-  o.status=nextStage;
+  const nextStage = curr + 1;
+  o.status = nextStage;
 
   if(!Array.isArray(o.events)){
-    o.events=[];
+    o.events = [];
   }
   // Prevent duplicate events
-  if(!o.events.some(ev=>ev.stage===nextStage)){
+  if(!o.events.some(ev => ev.stage === nextStage)){
     o.events.push({
-      stage:nextStage,
-      title:STATUSES[nextStage],
-      desc:STATUS_DESC[nextStage],
-      timestamp:new Date().toISOString(),
-      note:"Status pengiriman demo diperbarui"
+      stage: nextStage,
+      title: STATUSES[nextStage],
+      desc: STATUS_DESC[nextStage],
+      timestamp: new Date().toISOString(),
+      note: "Status pengiriman demo diperbarui"
     });
   }
 
   updateOrder(o);
-  toast(`Status: ${STATUSES[nextStage]}`,"ok");
-  render(false);
+  toast(`Status: ${STATUSES[nextStage]}`, "ok");
+
+  // Check if we can animate marker smoothly in-place on tracking page
+  const canvas = document.getElementById("trackMapCanvas");
+  const timeline = document.getElementById("trackingTimeline");
+  const btnAdv = document.getElementById("btnAdvanceSim");
+
+  if(canvas && timeline && activeTrackingOrderId === o.id && trackingMapInstance && !isMarkerAnimating){
+    const fromCoordIdx = STAGE_WAYPOINT_INDICES[curr];
+    const toCoordIdx = STAGE_WAYPOINT_INDICES[nextStage];
+
+    // Update legend text
+    const legendStage = document.getElementById("mapLegendStage");
+    if(legendStage) legendStage.textContent = STATUSES[nextStage];
+
+    const currStageLabel = document.getElementById("currStageLabel");
+    if(currStageLabel) currStageLabel.innerHTML = `Status saat ini: <b>${STATUSES[nextStage]}</b> (${nextStage + 1}/5)`;
+
+    // Update marker icon and popup
+    packageMarker.setIcon(createPackageMarkerIcon(nextStage));
+    packageMarker.setPopupContent(`<b>Posisi Paket (Simulasi Demo)</b><br/><span style='font-size:11px;color:#666'>Tahap: <b>${STATUSES[nextStage]}</b><br/>Bukan GPS riil · Rute peragaan demo</span>`);
+
+    // Update timeline items
+    const tlItems = timeline.querySelectorAll(".tl-item");
+    tlItems.forEach((item, idx) => {
+      const isDone = idx < nextStage;
+      const isNow = idx === nextStage;
+      item.className = `tl-item ${isDone ? "done" : ""} ${isNow ? "now" : ""}`;
+      const dot = item.querySelector(".tl-dot");
+      if(dot) dot.textContent = isDone ? "✓" : idx + 1;
+      const badge = item.querySelector(".tl-badge");
+      if(badge){
+        badge.className = `tl-badge ${isDone ? "badge-done" : isNow ? "badge-now" : "badge-pending"}`;
+        badge.textContent = isDone ? "Selesai" : isNow ? "Status Terkini" : "Pending";
+      }
+      const desc = item.querySelector(".tl-desc");
+      if(desc && isNow) desc.textContent = STATUS_DESC[nextStage];
+    });
+
+    // Update advance button or show completion card
+    if(nextStage >= STATUSES.length - 1){
+      const panel = document.querySelector(".demo-advance-panel");
+      if(panel){
+        panel.outerHTML = `
+          <div class="completion-card">
+            <div class="check-big" style="background:#E5F2E8;color:#256B3D;margin:0 auto 12px">✓</div>
+            <h3 style="font-family:var(--font-ed);margin:0 0 6px;text-align:center">Paket Telah Tiba di Tujuan (Terkirim)</h3>
+            <p class="muted small center" style="margin:0 auto 16px;max-width:48ch">
+              Seluruh tahap pengiriman demo telah selesai. Barang telah diterima dengan aman di alamat pengiriman. Selamat menikmati perjalanan bersama NOMAD!
+            </p>
+            <div class="btn-row" style="justify-content:center;gap:10px;flex-wrap:wrap">
+              <a href="#/shop" class="btn btn-dark btn-sm">KEMBALI BELANJA</a>
+              <button type="button" class="btn btn-terra btn-sm" onclick="replaySimulation('${encodeURIComponent(o.id)}')">↺ ULANGI SIMULASI (REPLAY)</button>
+              <a href="#/order/${encodeURIComponent(o.id)}" class="btn btn-ghost btn-sm">LIHAT BUKTI PESANAN</a>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()">🖨 CETAK NOTA DIGITAL</button>
+            </div>
+          </div>
+        `;
+      }
+    } else if(btnAdv){
+      btnAdv.innerHTML = `LANJUTKAN SIMULASI PENGIRIMAN → (${STATUSES[nextStage + 1]})`;
+    }
+
+    // Update stage jumper active pills
+    const pills = document.querySelectorAll(".stage-pill");
+    pills.forEach((p, idx) => {
+      p.classList.toggle("active", idx === nextStage);
+    });
+
+    // Animate package marker along intermediate road coordinates
+    animatePackageAlongRoute(fromCoordIdx, toCoordIdx);
+  } else {
+    render(false);
+  }
 };
 
 window.autoFillCheckout=()=>{
@@ -1929,6 +2317,9 @@ function render(scroll=true){
   if(scroll) window.scrollTo(0,0);
   closeCart();
   closePayModal();
+  if(seg[0]!=="tracking"){
+    destroyTrackingMap();
+  }
   let html="";
   if(seg.length===0){
     document.title="NOMAD — Carry Less. Go Further.";
@@ -1954,8 +2345,14 @@ function render(scroll=true){
     app.innerHTML=renderOrder(seg[1]||"");
   } else if(seg[0]==="tracking"){
     document.title="Track Order — NOMAD";
-    if(seg[1]) app.innerHTML=renderTracking(seg[1]);
-    else app.innerHTML=renderTrackingList();
+    if(seg[1]){
+      destroyTrackingMap();
+      app.innerHTML=renderTracking(seg[1]);
+      mountTrackingMap(decodeURIComponent(seg[1]));
+    } else {
+      destroyTrackingMap();
+      app.innerHTML=renderTrackingList();
+    }
   } else {
     document.title="NOMAD — Carry Less. Go Further.";
     html=renderHome(); app.innerHTML=html; mountKit();
