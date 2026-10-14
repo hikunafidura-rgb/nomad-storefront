@@ -1372,7 +1372,6 @@ function renderTrackingList(){
           <p class="muted" style="margin-bottom:14px">Belum ada pesanan dalam sesi browser ini. Buat pesanan baru untuk melihat live tracking simulasi.</p>
           <div class="btn-row" style="justify-content:center;gap:10px;flex-wrap:wrap">
             <a href="#/shop" class="btn btn-dark btn-sm">BELANJA PRODUK</a>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="seedDemoOrder()">⚡ Buat Order Demo Cepat</button>
           </div>
         </div>
       `:`
@@ -1442,65 +1441,222 @@ window.copyTrackingLink=(rawId)=>{
   copyText(url,"Tautan pelacakan disalin ke clipboard!");
 };
 
-/* ---------- INTERACTIVE DELIVERY MAP & TRACKING SYSTEM ---------- */
-const DEMO_ROUTE_COORDS = [
-  [-6.3015, 106.6534], // 0: NOMAD Fulfillment Hub BSD (Pesanan Diproses)
-  [-6.2950, 106.6710], // 1: Packaging & Sort Hub BSD (Dikemas)
-  [-6.2842, 106.7118], // 2: Bintaro Viaduct Corridor
-  [-6.2731, 106.7450], // 3: Pondok Ranji Toll Gateway
-  [-6.2625, 106.7621], // 4: Gerbang Tol Ulujami / Koridor JORR (Dalam Perjalanan)
-  [-6.2512, 106.7805], // 5: Koridor Kebayoran Lama
-  [-6.2442, 106.7938], // 6: Hub Distribusi Kebayoran (Sedang Diantar)
-  [-6.2405, 106.8052], // 7: Koridor Senopati Approach
-  [-6.2383, 106.8124]  // 8: Alamat Tujuan Kebayoran Baru (Terkirim)
-];
+/* ---------- REAL-ROAD OSRM DELIVERY NAVIGATION & TRACKING SYSTEM ---------- */
 
-// Mapping 5 stages (0 to 4) to coordinate indices in DEMO_ROUTE_COORDS
-const STAGE_WAYPOINT_INDICES = [0, 1, 4, 6, 8];
+// Origin: NOMAD Central Fulfillment Hub BSD
+const ORIGIN_COORDS = [-6.301832, 106.653237];
+// Destination: Jl. Senopati No. 42, Kebayoran Baru, Jakarta Selatan
+const DEST_COORDS = [-6.238311, 106.812402];
+
+function haversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function calculateBearing(lat1, lon1, lat2, lon2) {
+  const toRad = d => d * Math.PI / 180;
+  const toDeg = r => r * 180 / Math.PI;
+  const phi1 = toRad(lat1);
+  const phi2 = toRad(lat2);
+  const deltaLambda = toRad(lon2 - lon1);
+  const y = Math.sin(deltaLambda) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+function prepareRouteData(rawRoute) {
+  if (!rawRoute || !Array.isArray(rawRoute.coordinates) || rawRoute.coordinates.length < 2) return null;
+  const coords = rawRoute.coordinates;
+  const cumDistances = [0];
+  for (let i = 1; i < coords.length; i++) {
+    const d = haversineDistance(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]);
+    cumDistances.push(cumDistances[i - 1] + d);
+  }
+  const totalDistance = cumDistances[cumDistances.length - 1];
+  return {
+    coordinates: coords,
+    steps: Array.isArray(rawRoute.steps) ? rawRoute.steps : [],
+    cumulativeDistances: cumDistances,
+    totalDistance: totalDistance,
+    distanceKm: (totalDistance / 1000).toFixed(1),
+    durationSec: rawRoute.duration || 1860,
+    source: rawRoute.source || "osrm-road-network"
+  };
+}
+
+async function loadOSRMRoute(origin, dest) {
+  const fallback = typeof window !== "undefined" && window.NOMAD_DEFAULT_ROUTE ? window.NOMAD_DEFAULT_ROUTE : null;
+  try {
+    if (typeof fetch !== "undefined") {
+      const url = `https://router.project-osrm.org/route/v1/driving/${origin[1]},${origin[0]};${dest[1]},${dest[0]}?overview=full&geometries=geojson&steps=true`;
+      const controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
+      const timeout = controller ? setTimeout(() => controller.abort(), 3500) : null;
+      const resp = await fetch(url, controller ? { signal: controller.signal } : {});
+      if (timeout) clearTimeout(timeout);
+      if (resp && resp.ok) {
+        const json = await resp.json();
+        if (json.code === "Ok" && json.routes && json.routes[0]) {
+          const r = json.routes[0];
+          const coords = r.geometry.coordinates.map(c => [Number(c[1].toFixed(6)), Number(c[0].toFixed(6))]);
+          const steps = (r.legs && r.legs[0] && Array.isArray(r.legs[0].steps)) ? r.legs[0].steps.map(s => ({
+            name: s.name || "Jalan Lokal",
+            distance: Math.round(s.distance),
+            duration: Math.round(s.duration)
+          })) : [];
+          return prepareRouteData({
+            coordinates: coords,
+            steps: steps,
+            distance: r.distance,
+            duration: r.duration,
+            source: "osrm-live-network"
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.info("OSRM live fetch fallback to verified cached road coordinates:", err.message);
+  }
+
+  if (fallback) {
+    return prepareRouteData({ ...fallback, source: "osrm-verified-cache" });
+  }
+  return null;
+}
+
+function getRouteStateAtDistance(distanceMeters, routeData) {
+  const coords = routeData.coordinates;
+  const cum = routeData.cumulativeDistances;
+  const total = routeData.totalDistance;
+  const clampedD = Math.max(0, Math.min(total, distanceMeters));
+  const progressRatio = total > 0 ? clampedD / total : 0;
+
+  let i = 0;
+  while (i < cum.length - 2 && cum[i + 1] < clampedD) {
+    i++;
+  }
+
+  const segStart = cum[i];
+  const segEnd = cum[i + 1] || total;
+  const segLen = Math.max(0.001, segEnd - segStart);
+  const t = Math.min(1, Math.max(0, (clampedD - segStart) / segLen));
+
+  const p1 = coords[i];
+  const p2 = coords[i + 1] || p1;
+  const lat = p1[0] + t * (p2[0] - p1[0]);
+  const lng = p1[1] + t * (p2[1] - p1[1]);
+  const bearing = calculateBearing(p1[0], p1[1], p2[0], p2[1]);
+
+  let streetName = "Jl. Senopati / Kebayoran Baru";
+  if (routeData.steps && routeData.steps.length) {
+    let stepDist = 0;
+    for (const step of routeData.steps) {
+      stepDist += step.distance;
+      if (clampedD <= stepDist) {
+        streetName = step.name || "Jalan Lokal";
+        break;
+      }
+    }
+  }
+
+  let stage = 0;
+  if (progressRatio >= 1.0) stage = 4;
+  else if (progressRatio >= 0.70) stage = 3;
+  else if (progressRatio >= 0.35) stage = 2;
+  else if (progressRatio >= 0.12) stage = 1;
+  else stage = 0;
+
+  return {
+    lat,
+    lng,
+    bearing,
+    coordIndex: i,
+    progressRatio,
+    traveledMeters: clampedD,
+    totalMeters: total,
+    streetName,
+    stage
+  };
+}
+
+let simState = {
+  isPlaying: true,
+  speedMultiplier: 1,
+  currentMeters: 0,
+  lastTimestamp: null,
+  rafId: null,
+  orderId: null,
+  routeData: null,
+  followCamera: false,
+  hasArrived: false
+};
 
 let trackingMapInstance = null;
 let packageMarker = null;
 let routePolyline = null;
 let traveledPolyline = null;
 let activeTrackingOrderId = null;
-let isMarkerAnimating = false;
 
-function destroyTrackingMap(){
-  if(trackingMapInstance){
-    try{
+function destroyTrackingMap() {
+  if (simState.rafId && typeof cancelAnimationFrame !== "undefined") {
+    cancelAnimationFrame(simState.rafId);
+    simState.rafId = null;
+  }
+  simState.isPlaying = false;
+  simState.orderId = null;
+  simState.routeData = null;
+
+  if (trackingMapInstance) {
+    try {
       trackingMapInstance.remove();
-    }catch(err){}
+    } catch (err) {}
     trackingMapInstance = null;
     packageMarker = null;
     routePolyline = null;
     traveledPolyline = null;
     activeTrackingOrderId = null;
-    isMarkerAnimating = false;
   }
 }
 
-function createPackageMarkerIcon(stage){
-  const isDelivered = stage >= STATUSES.length - 1;
-  const label = isDelivered ? "Terkirim ✓" : STATUSES[stage];
-  const pinClass = isDelivered ? "marker-dest" : "marker-pkg";
-  const iconSymbol = isDelivered ? "✓" : "📦";
-  const pulseHtml = isDelivered ? "" : '<div class="marker-pulse"></div>';
-  if(typeof L === "undefined") return null;
+function createCourierIcon(bearing = 0, isDelivered = false) {
+  if (typeof L === "undefined") return null;
+  if (isDelivered) {
+    return L.divIcon({
+      className: "custom-map-marker",
+      html: '<div class="courier-delivered-pin">✓</div><span class="marker-label">Terkirim ✓</span>',
+      iconSize: [44, 44],
+      iconAnchor: [22, 22]
+    });
+  }
   return L.divIcon({
     className: "custom-map-marker",
-    html: `${pulseHtml}<div class="marker-pin ${pinClass}" title="Posisi Paket">${iconSymbol}</div><span class="marker-label">${esc(label)}</span>`,
-    iconSize: [40, 48],
-    iconAnchor: [20, 24]
+    html: `
+      <div class="courier-marker-container">
+        <div class="courier-pulse-ring"></div>
+        <div class="courier-vehicle-rotator" id="courierRotator" style="transform: rotate(${Math.round(bearing)}deg);">
+          <div class="courier-heading-arrow"></div>
+          <div class="courier-bike-pin"><span class="courier-bike-emoji">🛵</span></div>
+        </div>
+      </div>
+      <span class="marker-label" id="courierMarkerLabel">Kurir NOMAD</span>
+    `,
+    iconSize: [44, 44],
+    iconAnchor: [22, 22]
   });
 }
 
-function renderMapFallbackHtml(currStage){
+function renderMapFallbackHtml(currStage) {
   const progressPct = Math.min(100, Math.round((currStage / (STATUSES.length - 1)) * 100));
   return `
     <div class="map-fallback">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
         <span class="small" style="font-weight:700;color:var(--forest)">Simulasi Rute Pengiriman Demo (Mode Diagram)</span>
-        <span class="map-demo-badge"><span class="badge-dot"></span>Simulasi Demo · Bukan GPS Riil</span>
+        <span class="map-demo-badge"><span class="badge-dot"></span>Simulasi Rute Nyata · Bukan GPS Langsung</span>
       </div>
       <div class="map-fallback-steps">
         <div class="map-fallback-line"></div>
@@ -1525,36 +1681,42 @@ function renderMapFallbackHtml(currStage){
   `;
 }
 
-function mountTrackingMap(orderId){
+async function mountTrackingMap(orderId) {
   const o = findOrder(orderId);
-  if(!o) return;
+  if (!o) return;
   const container = document.getElementById("trackMapCanvas");
-  if(!container) return;
+  if (!container) return;
 
   const curr = typeof o.status === "number" && !isNaN(o.status) ? Math.max(0, Math.min(STATUSES.length - 1, o.status)) : 0;
 
-  // Check if Leaflet is available in current environment
-  if(typeof L === "undefined"){
+  if (typeof L === "undefined") {
     container.innerHTML = renderMapFallbackHtml(curr);
     return;
   }
 
-  // If map already exists for this exact order, update marker and traveled polyline
-  if(trackingMapInstance && activeTrackingOrderId === o.id){
-    const targetIdx = STAGE_WAYPOINT_INDICES[curr];
-    if(packageMarker){
-      packageMarker.setIcon(createPackageMarkerIcon(curr));
-      packageMarker.setLatLng(DEMO_ROUTE_COORDS[targetIdx]);
-    }
-    if(traveledPolyline){
-      traveledPolyline.setLatLngs(DEMO_ROUTE_COORDS.slice(0, targetIdx + 1));
-    }
+  destroyTrackingMap();
+  activeTrackingOrderId = o.id;
+
+  const routeData = await loadOSRMRoute(ORIGIN_COORDS, DEST_COORDS);
+  if (!routeData) {
+    container.innerHTML = `
+      <div class="map-fallback">
+        <p class="muted small" style="margin:0 0 10px">Gagal memuat rute jalan nyata dari penyedia routing. Menampilkan mode diagram cadangan.</p>
+        ${renderMapFallbackHtml(curr)}
+      </div>
+    `;
     return;
   }
 
-  // Destroy previous map instance
-  destroyTrackingMap();
-  activeTrackingOrderId = o.id;
+  simState.routeData = routeData;
+  simState.orderId = o.id;
+
+  const stageRatios = [0.03, 0.22, 0.52, 0.82, 1.0];
+  const initialRatio = stageRatios[curr] || 0.03;
+  simState.currentMeters = curr >= STATUSES.length - 1 ? routeData.totalDistance : initialRatio * routeData.totalDistance;
+  simState.isPlaying = curr < STATUSES.length - 1;
+  simState.hasArrived = curr >= STATUSES.length - 1;
+  simState.lastTimestamp = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
 
   try {
     trackingMapInstance = L.map("trackMapCanvas", {
@@ -1563,202 +1725,303 @@ function mountTrackingMap(orderId){
       attributionControl: true
     });
 
-    // Add OpenStreetMap tiles with attribution
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 18,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · Routing via OSRM'
     }).addTo(trackingMapInstance);
 
-    // Full planned route line (terracotta dashed line)
-    routePolyline = L.polyline(DEMO_ROUTE_COORDS, {
+    routePolyline = L.polyline(routeData.coordinates, {
       color: "#B87952",
       weight: 4,
-      opacity: 0.75,
-      dashArray: "6, 8"
+      opacity: 0.65
     }).addTo(trackingMapInstance);
 
-    // Traveled line (solid dark forest)
-    const targetCoordIdx = STAGE_WAYPOINT_INDICES[curr];
-    const traveledCoords = DEMO_ROUTE_COORDS.slice(0, targetCoordIdx + 1);
-    traveledPolyline = L.polyline(traveledCoords, {
+    const initialCutState = getRouteStateAtDistance(simState.currentMeters, routeData);
+    const initialTraveled = routeData.coordinates.slice(0, initialCutState.coordIndex + 1);
+    initialTraveled.push([initialCutState.lat, initialCutState.lng]);
+    traveledPolyline = L.polyline(initialTraveled, {
       color: "#18251F",
       weight: 5,
       opacity: 0.95
     }).addTo(trackingMapInstance);
 
-    // Origin Marker (BSD Fulfillment Hub)
     const originIcon = L.divIcon({
       className: "custom-map-marker",
       html: '<div class="marker-pin marker-origin" title="Fulfillment Hub BSD">🏢</div><span class="marker-label">BSD Hub</span>',
       iconSize: [36, 44],
       iconAnchor: [18, 22]
     });
-    L.marker(DEMO_ROUTE_COORDS[0], { icon: originIcon })
+    L.marker(ORIGIN_COORDS, { icon: originIcon })
       .bindPopup("<b>NOMAD Fulfillment Hub BSD</b><br/><span style='font-size:11px;color:#666'>Pusat fulfillment logistik & kemasan ramah lingkungan</span>")
       .addTo(trackingMapInstance);
 
-    // Destination Marker (Customer Address)
     const destIcon = L.divIcon({
       className: "custom-map-marker",
       html: '<div class="marker-pin marker-dest" title="Alamat Tujuan">📍</div><span class="marker-label">Tujuan</span>',
       iconSize: [36, 44],
       iconAnchor: [18, 22]
     });
-    L.marker(DEMO_ROUTE_COORDS[DEMO_ROUTE_COORDS.length - 1], { icon: destIcon })
-      .bindPopup(`<b>Alamat Penerima (Simulasi)</b><br/><span style='font-size:11px;color:#666'>${esc(o.info.address || "Jl. Senopati No. 42")}, ${esc(o.info.city || "Jakarta Selatan")}</span>`)
+    L.marker(DEST_COORDS, { icon: destIcon })
+      .bindPopup(`<b>Alamat Penerima</b><br/><span style='font-size:11px;color:#666'>${esc(o.info.address || "Jl. Senopati No. 42")}, ${esc(o.info.city || "Jakarta Selatan")}</span>`)
       .addTo(trackingMapInstance);
 
-    // Current Package Marker
-    const pkgIcon = createPackageMarkerIcon(curr);
-    packageMarker = L.marker(DEMO_ROUTE_COORDS[targetCoordIdx], {
-      icon: pkgIcon,
+    const courierIcon = createCourierIcon(initialCutState.bearing, simState.hasArrived);
+    packageMarker = L.marker([initialCutState.lat, initialCutState.lng], {
+      icon: courierIcon,
       zIndexOffset: 1000
-    }).bindPopup(`<b>Posisi Paket (Simulasi Demo)</b><br/><span style='font-size:11px;color:#666'>Tahap: <b>${STATUSES[curr]}</b><br/>Bukan GPS riil · Rute peragaan demo</span>`)
-      .addTo(trackingMapInstance);
+    }).addTo(trackingMapInstance);
 
-    // Fit map bounds to entire route
     trackingMapInstance.fitBounds(routePolyline.getBounds(), {
       padding: [35, 35]
     });
 
     setTimeout(() => {
-      if(trackingMapInstance) trackingMapInstance.invalidateSize();
+      if (trackingMapInstance) trackingMapInstance.invalidateSize();
     }, 150);
 
-  } catch(err) {
-    console.warn("Leaflet map initialization fallback:", err);
+    updateHudUi(initialCutState, o);
+
+    if (typeof requestAnimationFrame !== "undefined") {
+      const simFrame = (now) => {
+        if (!trackingMapInstance || !simState.routeData) return;
+        if (simState.isPlaying && !simState.hasArrived) {
+          const dt = Math.min(0.1, (now - (simState.lastTimestamp || now)) / 1000);
+          simState.lastTimestamp = now;
+          const speedMps = (simState.routeData.totalDistance / 38) * simState.speedMultiplier;
+          simState.currentMeters += speedMps * dt;
+
+          if (simState.currentMeters >= simState.routeData.totalDistance) {
+            simState.currentMeters = simState.routeData.totalDistance;
+            simState.isPlaying = false;
+            simState.hasArrived = true;
+          }
+
+          const curState = getRouteStateAtDistance(simState.currentMeters, simState.routeData);
+          updateSimulationDisplay(curState);
+        } else {
+          simState.lastTimestamp = now;
+        }
+
+        simState.rafId = requestAnimationFrame(simFrame);
+      };
+
+      simState.rafId = requestAnimationFrame(simFrame);
+    }
+
+  } catch (err) {
+    console.warn("Leaflet map initialization error:", err);
     container.innerHTML = renderMapFallbackHtml(curr);
   }
 }
 
-function animatePackageAlongRoute(fromCoordIdx, toCoordIdx, onFinish){
-  if(!packageMarker || !trackingMapInstance || typeof requestAnimationFrame === "undefined"){
-    if(packageMarker && DEMO_ROUTE_COORDS[toCoordIdx]){
-      packageMarker.setLatLng(DEMO_ROUTE_COORDS[toCoordIdx]);
-    }
-    if(traveledPolyline){
-      traveledPolyline.setLatLngs(DEMO_ROUTE_COORDS.slice(0, toCoordIdx + 1));
-    }
-    if(onFinish) onFinish();
-    return;
+function updateSimulationDisplay(state) {
+  if (!packageMarker || !trackingMapInstance) return;
+
+  packageMarker.setLatLng([state.lat, state.lng]);
+
+  const rotator = document.getElementById("courierRotator");
+  if (rotator) {
+    rotator.style.transform = `rotate(${Math.round(state.bearing)}deg)`;
   }
 
-  const slice = fromCoordIdx <= toCoordIdx
-    ? DEMO_ROUTE_COORDS.slice(fromCoordIdx, toCoordIdx + 1)
-    : DEMO_ROUTE_COORDS.slice(toCoordIdx, fromCoordIdx + 1).reverse();
-
-  if(slice.length < 2){
-    packageMarker.setLatLng(DEMO_ROUTE_COORDS[toCoordIdx]);
-    if(traveledPolyline){
-      traveledPolyline.setLatLngs(DEMO_ROUTE_COORDS.slice(0, toCoordIdx + 1));
-    }
-    if(onFinish) onFinish();
-    return;
+  if (traveledPolyline && simState.routeData) {
+    const traveledSlice = simState.routeData.coordinates.slice(0, state.coordIndex + 1);
+    traveledSlice.push([state.lat, state.lng]);
+    traveledPolyline.setLatLngs(traveledSlice);
   }
 
-  isMarkerAnimating = true;
-  const duration = Math.min(1100, Math.max(650, (toCoordIdx - fromCoordIdx) * 200));
-  const startTime = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
-  const totalSegs = slice.length - 1;
-
-  function step(timeNow){
-    const elapsed = timeNow - startTime;
-    const progress = Math.min(1, elapsed / duration);
-    // Smooth quadratic easeInOut
-    const ease = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-
-    const scaled = ease * totalSegs;
-    const segIdx = Math.min(totalSegs - 1, Math.floor(scaled));
-    const subProgress = scaled - segIdx;
-
-    const p0 = slice[segIdx];
-    const p1 = slice[segIdx + 1];
-    const currentLat = p0[0] + (p1[0] - p0[0]) * subProgress;
-    const currentLng = p0[1] + (p1[1] - p0[1]) * subProgress;
-
-    packageMarker.setLatLng([currentLat, currentLng]);
-
-    if(traveledPolyline){
-      const dynamicTraveled = DEMO_ROUTE_COORDS.slice(0, fromCoordIdx).concat(slice.slice(0, segIdx + 1)).concat([[currentLat, currentLng]]);
-      traveledPolyline.setLatLngs(dynamicTraveled);
-    }
-
-    if(progress < 1){
-      requestAnimationFrame(step);
-    } else {
-      packageMarker.setLatLng(DEMO_ROUTE_COORDS[toCoordIdx]);
-      if(traveledPolyline){
-        traveledPolyline.setLatLngs(DEMO_ROUTE_COORDS.slice(0, toCoordIdx + 1));
-      }
-      isMarkerAnimating = false;
-      if(onFinish) onFinish();
-    }
+  if (simState.followCamera) {
+    trackingMapInstance.panTo([state.lat, state.lng], { animate: false });
   }
 
-  requestAnimationFrame(step);
-}
+  const o = findOrder(simState.orderId);
+  updateHudUi(state, o);
 
-let autoPlayTimer = null;
-window.toggleAutoPlay = (rawId) => {
-  if(autoPlayTimer){
-    clearInterval(autoPlayTimer);
-    autoPlayTimer = null;
-    toast("Simulasi otomatis dihentikan", "ok");
-    render(false);
-    return;
-  }
-  const o = findOrder(decodeURIComponent(rawId));
-  if(!o) return;
-  if(o.status >= STATUSES.length - 1){
-    toast("Pesanan sudah berstatus 'Terkirim'", "ok");
-    return;
-  }
-  toast("Memulai simulasi otomatis perjalanan paket…", "ok");
-  autoPlayTimer = setInterval(() => {
-    const fresh = findOrder(decodeURIComponent(rawId));
-    if(!fresh || fresh.status >= STATUSES.length - 1){
-      clearInterval(autoPlayTimer);
-      autoPlayTimer = null;
-      toast("Simulasi selesai — Paket Terkirim!", "ok");
-      render(false);
-      return;
-    }
-    advance(rawId);
-  }, 1200);
-  render(false);
-};
-
-window.jumpToStage = (rawId, targetStage) => {
-  const o = findOrder(decodeURIComponent(rawId));
-  if(!o) return;
-  const target = Math.max(0, Math.min(STATUSES.length - 1, targetStage));
-  if(typeof o.status !== "number") o.status = 0;
-  if(!Array.isArray(o.events)) o.events = [];
-  
-  const baseTime = o.created ? new Date(o.created).getTime() : Date.now();
-  for(let s = 0; s <= target; s++){
-    if(!o.events.some(ev => ev.stage === s)){
-      const evTime = new Date(baseTime + s * 3600000).toISOString();
+  if (o && o.status !== state.stage) {
+    o.status = state.stage;
+    if (!Array.isArray(o.events)) o.events = [];
+    if (!o.events.some(ev => ev.stage === state.stage)) {
       o.events.push({
-        stage: s,
-        title: STATUSES[s],
-        desc: STATUS_DESC[s],
-        timestamp: evTime,
-        note: "Tahap simulasi terverifikasi"
+        stage: state.stage,
+        title: STATUSES[state.stage],
+        desc: STATUS_DESC[state.stage],
+        timestamp: new Date().toISOString(),
+        note: `Navigasi rute mencapai: ${state.streetName}`
       });
     }
+    updateOrder(o);
+    syncTimelineUi(state.stage);
   }
-  o.events.sort((a, b) => a.stage - b.stage);
-  o.status = target;
-  updateOrder(o);
-  destroyTrackingMap();
-  toast(`Lompat ke tahap: ${STATUSES[target]}`, "ok");
-  render(false);
+
+  if (state.progressRatio >= 1.0 && simState.hasArrived) {
+    packageMarker.setIcon(createCourierIcon(state.bearing, true));
+    const playBtn = document.getElementById("hudPlayPauseBtn");
+    if (playBtn) {
+      playBtn.className = "hud-btn primary";
+      playBtn.innerHTML = "<span>↺</span> <span>Ulangi</span>";
+    }
+    syncCompletionCard(o);
+  }
+}
+
+function updateHudUi(state, o) {
+  const streetEl = document.getElementById("hudStreetName");
+  if (streetEl) streetEl.textContent = `📍 Melintas di: ${state.streetName}`;
+
+  const distEl = document.getElementById("hudDistance");
+  if (distEl) distEl.textContent = `${(state.traveledMeters / 1000).toFixed(1)} / ${(state.totalMeters / 1000).toFixed(1)} km`;
+
+  const pctEl = document.getElementById("hudProgressPct");
+  if (pctEl) pctEl.textContent = `${Math.round(state.progressRatio * 100)}%`;
+
+  const barEl = document.getElementById("hudProgressBar");
+  if (barEl) barEl.style.width = `${(state.progressRatio * 100).toFixed(1)}%`;
+
+  const etaEl = document.getElementById("hudEta");
+  if (etaEl) {
+    const remainingKm = Math.max(0, (state.totalMeters - state.traveledMeters) / 1000);
+    const estMin = Math.max(1, Math.round(remainingKm / 40 * 60));
+    etaEl.textContent = state.progressRatio >= 1.0 ? "Tiba di tujuan" : `~${estMin} mnt lagi`;
+  }
+
+  const badgeEl = document.getElementById("hudStatusBadge");
+  if (badgeEl) {
+    badgeEl.textContent = STATUSES[state.stage];
+    badgeEl.className = `hud-status-badge ${state.stage >= 4 ? "delivered" : ""}`;
+  }
+
+  const stageHeader = document.getElementById("currStageLabel");
+  if (stageHeader) {
+    stageHeader.innerHTML = `Status saat ini: <b>${STATUSES[state.stage]}</b> (${state.stage + 1}/5)`;
+  }
+}
+
+function syncTimelineUi(stage) {
+  const timeline = document.getElementById("trackingTimeline");
+  if (!timeline) return;
+  const items = timeline.querySelectorAll(".tl-item");
+  items.forEach((item, idx) => {
+    const isDone = idx < stage;
+    const isNow = idx === stage;
+    item.className = `tl-item ${isDone ? "done" : ""} ${isNow ? "now" : ""}`;
+    const dot = item.querySelector(".tl-dot");
+    if (dot) dot.textContent = isDone ? "✓" : idx + 1;
+    const badge = item.querySelector(".tl-badge");
+    if (badge) {
+      badge.className = `tl-badge ${isDone ? "badge-done" : isNow ? "badge-now" : "badge-pending"}`;
+      badge.textContent = isDone ? "Selesai" : isNow ? "Status Terkini" : "Pending";
+    }
+  });
+
+  const btnAdv = document.getElementById("btnAdvanceSim");
+  if (btnAdv && stage < STATUSES.length - 1) {
+    btnAdv.innerHTML = `LANJUTKAN SIMULASI PENGIRIMAN → (${STATUSES[stage + 1]})`;
+  }
+
+  const pills = document.querySelectorAll(".stage-pill");
+  pills.forEach((p, idx) => {
+    p.classList.toggle("active", idx === stage);
+  });
+}
+
+function syncCompletionCard(o) {
+  const panel = document.querySelector(".demo-advance-panel");
+  if (panel) {
+    panel.outerHTML = `
+      <div class="completion-card">
+        <div class="check-big" style="background:#E5F2E8;color:#256B3D;margin:0 auto 12px">✓</div>
+        <h3 style="font-family:var(--font-ed);margin:0 0 6px;text-align:center">Paket Telah Tiba di Tujuan (Terkirim)</h3>
+        <p class="muted small center" style="margin:0 auto 16px;max-width:48ch">
+          Seluruh tahap pengiriman demo telah selesai. Barang telah diterima dengan aman di alamat pengiriman. Selamat menikmati perjalanan bersama NOMAD!
+        </p>
+        <div class="btn-row" style="justify-content:center;gap:10px;flex-wrap:wrap">
+          <a href="#/shop" class="btn btn-dark btn-sm">KEMBALI BELANJA</a>
+          <button type="button" class="btn btn-terra btn-sm" onclick="restartSimulation()">↺ ULANGI SIMULASI (REPLAY)</button>
+          <a href="#/order/${encodeURIComponent(o ? o.id : "")}" class="btn btn-ghost btn-sm">LIHAT BUKTI PESANAN</a>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()">🖨 CETAK NOTA DIGITAL</button>
+        </div>
+      </div>
+    `;
+  }
+}
+
+window.toggleSimulationPlay = () => {
+  if (simState.hasArrived) {
+    window.restartSimulation();
+    return;
+  }
+  simState.isPlaying = !simState.isPlaying;
+  const icon = document.getElementById("hudPlayIcon");
+  const text = document.getElementById("hudPlayText");
+  const btn = document.getElementById("hudPlayPauseBtn");
+
+  if (simState.isPlaying) {
+    simState.lastTimestamp = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+    if (icon) icon.textContent = "⏸";
+    if (text) text.textContent = "Jeda";
+    if (btn) btn.className = "hud-btn primary";
+    toast("Simulasi perjalanan dilanjutkan", "ok");
+  } else {
+    if (icon) icon.textContent = "▶";
+    if (text) text.textContent = "Lanjutkan";
+    if (btn) btn.className = "hud-btn";
+    toast("Simulasi perjalanan dijeda", "ok");
+  }
 };
+
+window.restartSimulation = () => {
+  if (simState.routeData && simState.routeData.totalDistance) {
+    simState.currentMeters = 0;
+    simState.isPlaying = true;
+    simState.hasArrived = false;
+    simState.lastTimestamp = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+    if (packageMarker) {
+      packageMarker.setIcon(createCourierIcon(0, false));
+    }
+    const icon = document.getElementById("hudPlayIcon");
+    const text = document.getElementById("hudPlayText");
+    const btn = document.getElementById("hudPlayPauseBtn");
+    if (icon) icon.textContent = "⏸";
+    if (text) text.textContent = "Jeda";
+    if (btn) btn.className = "hud-btn primary";
+
+    const curState = getRouteStateAtDistance(0, simState.routeData);
+    updateSimulationDisplay(curState);
+    toast("Simulasi rute pengiriman diulang dari awal!", "ok");
+  } else {
+    const { seg } = parseHash();
+    if (seg && seg[1]) replaySimulation(decodeURIComponent(seg[1]));
+  }
+};
+
+window.setSimulationSpeed = (spd) => {
+  simState.speedMultiplier = Number(spd) || 1;
+  document.querySelectorAll(".hud-speed-btn").forEach(b => {
+    b.classList.toggle("active", b.textContent.trim() === `${spd}x`);
+  });
+  toast(`Kecepatan simulasi: ${spd}x`, "ok");
+};
+
+window.toggleCameraFollow = () => {
+  simState.followCamera = !simState.followCamera;
+  const btn = document.getElementById("hudFollowBtn");
+  if (btn) {
+    btn.classList.toggle("active", simState.followCamera);
+    btn.innerHTML = simState.followCamera ? "🎯 Mengikuti Kurir" : "🎯 Ikuti Kurir";
+  }
+  if (simState.followCamera && packageMarker && trackingMapInstance) {
+    trackingMapInstance.panTo(packageMarker.getLatLng(), { animate: true });
+    toast("Kamera mengikuti posisi kurir", "ok");
+  } else {
+    toast("Kamera bebas (bisa digeser & dizoom)", "ok");
+  }
+};
+
+window.toggleAutoPlay = window.toggleSimulationPlay;
 
 window.replaySimulation = (rawId) => {
   const o = findOrder(decodeURIComponent(rawId));
-  if(!o) return;
+  if (!o) return;
   o.status = 0;
   const now = new Date().toISOString();
   o.events = [
@@ -1774,6 +2037,46 @@ window.replaySimulation = (rawId) => {
   destroyTrackingMap();
   toast("Simulasi pengiriman diulang dari awal!", "ok");
   render(false);
+};
+
+window.jumpToStage = (rawId, targetStage) => {
+  const o = findOrder(decodeURIComponent(rawId));
+  if (!o) return;
+  const target = Math.max(0, Math.min(STATUSES.length - 1, targetStage));
+  const stageRatios = [0.03, 0.22, 0.52, 0.82, 1.0];
+  const targetRatio = stageRatios[target] || 0.03;
+
+  const baseTime = o.created ? new Date(o.created).getTime() : Date.now();
+  if (!Array.isArray(o.events)) o.events = [];
+  for (let s = 0; s <= target; s++) {
+    if (!o.events.some(ev => ev.stage === s)) {
+      const evTime = new Date(baseTime + s * 3600000).toISOString();
+      o.events.push({
+        stage: s,
+        title: STATUSES[s],
+        desc: STATUS_DESC[s],
+        timestamp: evTime,
+        note: "Tahap simulasi terverifikasi"
+      });
+    }
+  }
+  o.events.sort((a, b) => a.stage - b.stage);
+  o.status = target;
+  updateOrder(o);
+
+  if (simState.routeData && trackingMapInstance) {
+    simState.currentMeters = targetRatio * simState.routeData.totalDistance;
+    simState.isPlaying = target < STATUSES.length - 1;
+    simState.hasArrived = target >= STATUSES.length - 1;
+    simState.lastTimestamp = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+    const curState = getRouteStateAtDistance(simState.currentMeters, simState.routeData);
+    updateSimulationDisplay(curState);
+    toast(`Lompat ke tahap: ${STATUSES[target]}`, "ok");
+  } else {
+    destroyTrackingMap();
+    render(false);
+    toast(`Lompat ke tahap: ${STATUSES[target]}`, "ok");
+  }
 };
 
 function renderTracking(id){
@@ -1801,20 +2104,59 @@ function renderTracking(id){
     <div class="crumb"><a href="#/">Home</a> / <a href="#/tracking">Orders</a> / <b style="color:var(--ink)">${esc(o.id)}</b></div>
     <h1>Delivery Tracking</h1>
     <p class="sub" style="overflow-wrap:anywhere;word-break:break-word">
-      Order: <b>${esc(o.id)}</b> · No. Resi: <b>${esc(trk)}</b> · Layanan: ${esc(sh.name)} (Kurir simulasi)
+      Order: <b>${esc(o.id)}</b> · No. Resi: <b>${esc(trk)}</b> · Layanan: ${esc(sh.name)} (Simulasi Rute Nyata)
     </p>
 
-    <!-- Interactive Simulated Delivery Map Card -->
+    <!-- Interactive Real-Road Delivery Map Card -->
     <div class="card track-map-card">
       <div class="track-map-head">
         <div>
-          <h3 style="margin:0 0 2px">Peta Perjalanan Paket (Simulasi Demo)</h3>
-          <span class="small muted">Rute pengiriman: Fulfillment Hub BSD → Kebayoran Baru, Jakarta Selatan</span>
+          <h3 style="margin:0 0 2px">Peta Navigasi Pengiriman (Rute Jalan Nyata)</h3>
+          <span class="small muted">Rute navigasi OSRM: Central Hub BSD → Jl. Senopati, Kebayoran Baru</span>
         </div>
         <span class="map-demo-badge">
           <span class="badge-dot"></span>
-          Simulasi Demo · Bukan GPS Riil
+          Simulasi Rute Nyata · Bukan GPS Langsung
         </span>
+      </div>
+
+      <!-- Real-Road Live Journey HUD Card -->
+      <div class="live-track-hud" id="liveTrackHud">
+        <div class="hud-top">
+          <div class="hud-street-info">
+            <span class="hud-live-dot"></span>
+            <span class="hud-street-name" id="hudStreetName">📍 Memulai dari: Fulfillment Hub BSD</span>
+          </div>
+          <span class="hud-status-badge ${isDelivered ? "delivered" : ""}" id="hudStatusBadge">${STATUSES[curr]}</span>
+        </div>
+
+        <div class="hud-progress-wrap">
+          <div class="hud-progress-bar" id="hudProgressBar" style="width: 0%"></div>
+        </div>
+
+        <div class="hud-bottom">
+          <div class="hud-metrics">
+            <span class="hud-metrics-item">Jarak: <b id="hudDistance">0.0 / 26.7 km</b></span>
+            <span class="hud-metrics-item">Progres: <b id="hudProgressPct">0%</b></span>
+            <span class="hud-metrics-item">Estimasi Tiba: <b id="hudEta">~35 mnt lagi</b></span>
+          </div>
+          <div class="hud-controls">
+            <button type="button" class="hud-btn primary" id="hudPlayPauseBtn" onclick="toggleSimulationPlay()">
+              <span id="hudPlayIcon">⏸</span> <span id="hudPlayText">Jeda</span>
+            </button>
+            <button type="button" class="hud-btn" onclick="restartSimulation()" title="Ulangi simulasi dari titik awal">
+              ↺ Ulangi
+            </button>
+            <div class="hud-speed-group">
+              <button type="button" class="hud-speed-btn active" id="spdBtn1" onclick="setSimulationSpeed(1)">1x</button>
+              <button type="button" class="hud-speed-btn" id="spdBtn2" onclick="setSimulationSpeed(2)">2x</button>
+              <button type="button" class="hud-speed-btn" id="spdBtn4" onclick="setSimulationSpeed(4)">4x</button>
+            </div>
+            <button type="button" class="hud-btn" id="hudFollowBtn" onclick="toggleCameraFollow()" title="Pusatkan kamera pada kurir">
+              🎯 Ikuti Kurir
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="track-map-wrap">
@@ -1824,19 +2166,19 @@ function renderTracking(id){
       <div class="map-legend">
         <div class="map-legend-item">
           <span class="legend-dot origin"></span>
-          <span>Asal: Fulfillment Hub BSD</span>
+          <span>Asal: NOMAD Fulfillment Hub BSD</span>
         </div>
         <div class="map-legend-item">
           <span class="legend-dot pkg"></span>
-          <span>Paket: <b id="mapLegendStage">${STATUSES[curr]}</b> (Simulasi)</span>
+          <span>Kurir: <b id="mapLegendStage">Navigasi Rute Jalan Nyata (OSRM)</b></span>
         </div>
         <div class="map-legend-item">
           <span class="legend-dot dest"></span>
-          <span>Tujuan: ${esc(o.info.city || "Jakarta Selatan")}</span>
+          <span>Tujuan: ${esc(o.info.address || "Jl. Senopati No. 42")}, ${esc(o.info.city || "Jakarta Selatan")}</span>
         </div>
       </div>
       <p class="small muted" style="margin:10px 0 0;font-size:11px;line-height:1.4">
-        * Peta dan pergerakan penanda di atas merupakan visualisasi demonstrasi simulasi interaktif. Sistem tidak menampilkan koordinat riil atau GPS kurir langsung.
+        * Rute navigasi dihitung mengikuti jaringan jalan nyata (OpenStreetMap & Project OSRM). Posisi kurir motor, rotasi sudut jalan, dan estimasi waktu merupakan simulasi demonstrasi interaktif, bukan live GPS fisik kurir di lapangan.
       </p>
     </div>
 
@@ -1894,9 +2236,9 @@ function renderTracking(id){
             Status pengiriman demo — memajukan tahap simulasi secara berurutan dan menggerakkan paket di peta.
           </p>
 
-          <!-- Stage Jumper Pills for Competition Judges -->
+          <!-- Stage Jumper Pills -->
           <div class="stage-jumper-wrap">
-            <span class="small muted" style="display:block;margin-bottom:6px">Lompat Cepat ke Tahap Tertentu (Demo Juri):</span>
+            <span class="small muted" style="display:block;margin-bottom:6px">Lompat Cepat ke Tahap Tertentu (Demo):</span>
             <div class="stage-pills" id="stageJumperPills">
               ${STATUSES.map((st, idx) => `
                 <button type="button" class="stage-pill ${idx === curr ? "active" : ""}" onclick="jumpToStage('${encodeURIComponent(o.id)}', ${idx})">
@@ -1905,11 +2247,11 @@ function renderTracking(id){
               `).join("")}
             </div>
             <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
-              <button type="button" class="btn btn-ghost btn-xs" onclick="toggleAutoPlay('${encodeURIComponent(o.id)}')">
-                ${autoPlayTimer ? "⏸ Hentikan Putar Otomatis" : "▶ Putar Simulasi Otomatis (Auto-Play)"}
+              <button type="button" class="btn btn-ghost btn-xs" onclick="toggleSimulationPlay()">
+                ⏸ / ▶ Jeda / Lanjutkan Perjalanan
               </button>
-              <button type="button" class="btn btn-ghost btn-xs" onclick="replaySimulation('${encodeURIComponent(o.id)}')">
-                ↺ Ulangi Simulasi (Replay)
+              <button type="button" class="btn btn-ghost btn-xs" onclick="restartSimulation()">
+                ↺ Ulangi Rute (Restart)
               </button>
             </div>
           </div>
@@ -1923,7 +2265,7 @@ function renderTracking(id){
           </p>
           <div class="btn-row" style="justify-content:center;gap:10px;flex-wrap:wrap">
             <a href="#/shop" class="btn btn-dark btn-sm">KEMBALI BELANJA</a>
-            <button type="button" class="btn btn-terra btn-sm" onclick="replaySimulation('${encodeURIComponent(o.id)}')">↺ ULANGI SIMULASI (REPLAY)</button>
+            <button type="button" class="btn btn-terra btn-sm" onclick="restartSimulation()">↺ ULANGI SIMULASI (REPLAY)</button>
             <a href="#/order/${encodeURIComponent(o.id)}" class="btn btn-ghost btn-sm">LIHAT BUKTI PESANAN</a>
             <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()">🖨 CETAK NOTA DIGITAL</button>
           </div>
@@ -1992,19 +2334,15 @@ window.advance = (eid) => {
     return;
   }
   const curr = typeof o.status === "number" && !isNaN(o.status) ? o.status : 0;
-  // Guard: cannot advance beyond Delivered
   if(curr >= STATUSES.length - 1){
     toast("Pesanan sudah berada di status akhir (Terkirim)", "ok");
     return;
   }
-  // Step is strictly +1 (prevents skipped stages and invalid transitions)
   const nextStage = curr + 1;
-  o.status = nextStage;
+  const stageRatios = [0.03, 0.22, 0.52, 0.82, 1.0];
+  const targetRatio = stageRatios[nextStage] || 0.03;
 
-  if(!Array.isArray(o.events)){
-    o.events = [];
-  }
-  // Prevent duplicate events
+  if(!Array.isArray(o.events)) o.events = [];
   if(!o.events.some(ev => ev.stage === nextStage)){
     o.events.push({
       stage: nextStage,
@@ -2014,82 +2352,20 @@ window.advance = (eid) => {
       note: "Status pengiriman demo diperbarui"
     });
   }
-
+  o.status = nextStage;
   updateOrder(o);
-  toast(`Status: ${STATUSES[nextStage]}`, "ok");
 
-  // Check if we can animate marker smoothly in-place on tracking page
-  const canvas = document.getElementById("trackMapCanvas");
-  const timeline = document.getElementById("trackingTimeline");
-  const btnAdv = document.getElementById("btnAdvanceSim");
-
-  if(canvas && timeline && activeTrackingOrderId === o.id && trackingMapInstance && !isMarkerAnimating){
-    const fromCoordIdx = STAGE_WAYPOINT_INDICES[curr];
-    const toCoordIdx = STAGE_WAYPOINT_INDICES[nextStage];
-
-    // Update legend text
-    const legendStage = document.getElementById("mapLegendStage");
-    if(legendStage) legendStage.textContent = STATUSES[nextStage];
-
-    const currStageLabel = document.getElementById("currStageLabel");
-    if(currStageLabel) currStageLabel.innerHTML = `Status saat ini: <b>${STATUSES[nextStage]}</b> (${nextStage + 1}/5)`;
-
-    // Update marker icon and popup
-    packageMarker.setIcon(createPackageMarkerIcon(nextStage));
-    packageMarker.setPopupContent(`<b>Posisi Paket (Simulasi Demo)</b><br/><span style='font-size:11px;color:#666'>Tahap: <b>${STATUSES[nextStage]}</b><br/>Bukan GPS riil · Rute peragaan demo</span>`);
-
-    // Update timeline items
-    const tlItems = timeline.querySelectorAll(".tl-item");
-    tlItems.forEach((item, idx) => {
-      const isDone = idx < nextStage;
-      const isNow = idx === nextStage;
-      item.className = `tl-item ${isDone ? "done" : ""} ${isNow ? "now" : ""}`;
-      const dot = item.querySelector(".tl-dot");
-      if(dot) dot.textContent = isDone ? "✓" : idx + 1;
-      const badge = item.querySelector(".tl-badge");
-      if(badge){
-        badge.className = `tl-badge ${isDone ? "badge-done" : isNow ? "badge-now" : "badge-pending"}`;
-        badge.textContent = isDone ? "Selesai" : isNow ? "Status Terkini" : "Pending";
-      }
-      const desc = item.querySelector(".tl-desc");
-      if(desc && isNow) desc.textContent = STATUS_DESC[nextStage];
-    });
-
-    // Update advance button or show completion card
-    if(nextStage >= STATUSES.length - 1){
-      const panel = document.querySelector(".demo-advance-panel");
-      if(panel){
-        panel.outerHTML = `
-          <div class="completion-card">
-            <div class="check-big" style="background:#E5F2E8;color:#256B3D;margin:0 auto 12px">✓</div>
-            <h3 style="font-family:var(--font-ed);margin:0 0 6px;text-align:center">Paket Telah Tiba di Tujuan (Terkirim)</h3>
-            <p class="muted small center" style="margin:0 auto 16px;max-width:48ch">
-              Seluruh tahap pengiriman demo telah selesai. Barang telah diterima dengan aman di alamat pengiriman. Selamat menikmati perjalanan bersama NOMAD!
-            </p>
-            <div class="btn-row" style="justify-content:center;gap:10px;flex-wrap:wrap">
-              <a href="#/shop" class="btn btn-dark btn-sm">KEMBALI BELANJA</a>
-              <button type="button" class="btn btn-terra btn-sm" onclick="replaySimulation('${encodeURIComponent(o.id)}')">↺ ULANGI SIMULASI (REPLAY)</button>
-              <a href="#/order/${encodeURIComponent(o.id)}" class="btn btn-ghost btn-sm">LIHAT BUKTI PESANAN</a>
-              <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()">🖨 CETAK NOTA DIGITAL</button>
-            </div>
-          </div>
-        `;
-      }
-    } else if(btnAdv){
-      btnAdv.innerHTML = `LANJUTKAN SIMULASI PENGIRIMAN → (${STATUSES[nextStage + 1]})`;
-    }
-
-    // Update stage jumper active pills
-    const pills = document.querySelectorAll(".stage-pill");
-    pills.forEach((p, idx) => {
-      p.classList.toggle("active", idx === nextStage);
-    });
-
-    // Animate package marker along intermediate road coordinates
-    animatePackageAlongRoute(fromCoordIdx, toCoordIdx);
+  if (simState.routeData && trackingMapInstance) {
+    simState.currentMeters = targetRatio * simState.routeData.totalDistance;
+    simState.isPlaying = nextStage < STATUSES.length - 1;
+    simState.hasArrived = nextStage >= STATUSES.length - 1;
+    simState.lastTimestamp = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+    const curState = getRouteStateAtDistance(simState.currentMeters, simState.routeData);
+    updateSimulationDisplay(curState);
   } else {
     render(false);
   }
+  toast(`Status: ${STATUSES[nextStage]}`, "ok");
 };
 
 window.autoFillCheckout=()=>{
@@ -2198,12 +2474,6 @@ window.resetDemoData=()=>{
     go("#/");
   }
 };
-
-function toggleJudgeDock(){
-  const dock=document.getElementById("judgeDock");
-  if(dock) dock.classList.toggle("open");
-}
-window.toggleJudgeDock=toggleJudgeDock;
 
 // Account Modal
 function openAccountModal(){
@@ -2383,12 +2653,6 @@ const mobAccountLink=document.getElementById("mobAccountLink");
 if(mobAccountLink) mobAccountLink.onclick=(e)=>{ e.preventDefault(); openAccountModal(); };
 const mobFaqLink=document.getElementById("mobFaqLink");
 if(mobFaqLink) mobFaqLink.onclick=(e)=>{ e.preventDefault(); openFaqModal(); };
-
-// Judge Dock controls
-const dockToggle=document.getElementById("judgeDockToggle");
-if(dockToggle) dockToggle.onclick=toggleJudgeDock;
-const dockClose=document.getElementById("judgeDockClose");
-if(dockClose) dockClose.onclick=toggleJudgeDock;
 
 const sInput=document.getElementById("searchInput"), sClear=document.getElementById("searchClear");
 if(sInput && sClear){

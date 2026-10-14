@@ -530,25 +530,61 @@ select.f-select{width:100%;border:1px solid var(--line);border-radius:10px;paddi
 .map-demo-badge .badge-dot{width:7px;height:7px;border-radius:50%;background:var(--terra);animation:pulse-dot 1.5s infinite}
 @keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.3}}
 
-.track-map-wrap{position:relative;width:100%;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#E5DFD3}
-#trackMapCanvas{width:100%;height:clamp(280px,38vw,420px);z-index:1}
+/* live real-road journey hud */
+.live-track-hud{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:12px;box-shadow:0 4px 16px rgba(0,0,0,.04)}
+.hud-top{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.hud-street-info{display:flex;align-items:center;gap:8px;flex:1;min-width:200px}
+.hud-live-dot{width:8px;height:8px;border-radius:50%;background:#256B3D;box-shadow:0 0 0 3px rgba(37,107,61,.2);animation:hud-pulse 1.6s infinite;flex-shrink:0}
+@keyframes hud-pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.3);opacity:.5}}
+.hud-street-name{font-weight:700;font-size:14px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hud-status-badge{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(184,121,82,.14);color:var(--terra);white-space:nowrap}
+.hud-status-badge.delivered{background:#E5F2E8;color:#256B3D}
 
-/* leaflet custom theme */
+/* hud progress bar */
+.hud-progress-wrap{width:100%;height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-bottom:10px;position:relative}
+.hud-progress-bar{height:100%;background:linear-gradient(90deg,var(--forest),var(--terra));border-radius:3px;transition:width .15s linear}
+
+/* hud metrics & controls */
+.hud-bottom{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;font-size:12.5px}
+.hud-metrics{display:flex;align-items:center;gap:12px;color:var(--muted);flex-wrap:wrap}
+.hud-metrics-item{display:inline-flex;align-items:center;gap:4px}
+.hud-metrics-item b{color:var(--ink);font-weight:600}
+.hud-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.hud-btn{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:5px 11px;font-size:12px;font-weight:600;color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s}
+.hud-btn:hover{background:var(--card);border-color:var(--terra);color:var(--terra)}
+.hud-btn.primary{background:var(--forest);color:#fff;border-color:var(--forest)}
+.hud-btn.primary:hover{background:#23352C}
+.hud-btn.active{background:var(--terra);color:#fff;border-color:var(--terra)}
+.hud-speed-group{display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.hud-speed-btn{border:none;border-radius:0;padding:5px 8px;background:var(--paper);font-size:11px;font-weight:700;color:var(--muted);cursor:pointer}
+.hud-speed-btn:hover{background:var(--card);color:var(--ink)}
+.hud-speed-btn.active{background:var(--terra);color:#fff}
+
+.track-map-wrap{position:relative;width:100%;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#F7F5F0}
+#trackMapCanvas{width:100%;height:clamp(340px,46vw,500px);z-index:1}
+
+/* leaflet custom theme - light, clean, and legible */
 .leaflet-container{font-family:var(--font-ui)!important}
 .leaflet-bar a{background:var(--card)!important;color:var(--ink)!important;border-color:var(--line)!important}
 .leaflet-bar a:hover{background:var(--paper)!important}
-.leaflet-control-attribution{background:rgba(247,245,240,.85)!important;color:var(--muted)!important;font-size:10px!important;padding:2px 6px!important;border-radius:4px 0 0 0}
-[data-theme="dark"] .leaflet-control-attribution{background:rgba(26,36,31,.85)!important;color:var(--muted)!important}
+.leaflet-control-attribution{background:rgba(255,255,255,.9)!important;color:var(--muted)!important;font-size:10px!important;padding:2px 6px!important;border-radius:4px 0 0 0}
 
 /* custom map markers */
 .custom-map-marker{display:flex;flex-direction:column;align-items:center}
 .marker-pin{border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,.25);transition:transform .2s}
 .marker-origin{background:var(--forest);color:#F7F5F0;border:2.5px solid #fff;width:32px;height:32px}
 .marker-dest{background:#256B3D;color:#fff;border:2.5px solid #fff;width:32px;height:32px}
-.marker-pkg{background:var(--terra);color:#fff;border:2.5px solid #fff;width:36px;height:36px;z-index:10}
-.marker-pulse{position:absolute;top:50%;left:50%;width:36px;height:36px;margin:-18px 0 0 -18px;border-radius:50%;background:rgba(184,121,82,.4);pointer-events:none;animation:pulse-ring 2s infinite ease-out}
-@keyframes pulse-ring{0%{transform:scale(.8);opacity:.8}100%{transform:scale(2.2);opacity:0}}
 .marker-label{font-size:10.5px;font-weight:700;background:rgba(24,37,31,.9);color:#fff;padding:2px 7px;border-radius:4px;white-space:nowrap;margin-top:3px;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+
+/* courier marker with dynamic heading */
+.courier-marker-container{position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center;pointer-events:auto}
+.courier-vehicle-rotator{position:relative;width:40px;height:40px;display:flex;align-items:center;justify-content:center;transition:transform .12s linear}
+.courier-heading-arrow{position:absolute;top:-7px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid var(--forest);z-index:4}
+.courier-bike-pin{width:36px;height:36px;border-radius:50%;background:#fff;border:2.5px solid var(--forest);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.25);z-index:3;position:relative}
+.courier-bike-emoji{font-size:19px;line-height:1;display:inline-block;transform:scaleX(-1)}
+.courier-pulse-ring{position:absolute;top:50%;left:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:rgba(24,37,31,.22);pointer-events:none;animation:courier-pulse-anim 1.8s infinite ease-out}
+@keyframes courier-pulse-anim{0%{transform:scale(.85);opacity:.85}100%{transform:scale(2.1);opacity:0}}
+.courier-delivered-pin{width:38px;height:38px;border-radius:50%;background:#256B3D;color:#fff;border:2.5px solid #fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;box-shadow:0 4px 14px rgba(37,107,61,.4)}
 
 /* map legend & fallback */
 .map-legend{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:10px;font-size:12px;color:var(--muted)}
@@ -570,8 +606,6 @@ select.f-select{width:100%;border:1px solid var(--line);border-radius:10px;paddi
 .map-fallback-label{flex:1;text-align:center;word-break:break-word;line-height:1.25}
 .map-fallback-label.active{color:var(--terra);font-weight:700}
 .map-fallback-label.done{color:#256B3D;font-weight:600}
-[data-theme="dark"] .track-map-wrap{background:#18251F;border-color:rgba(255,255,255,.1)}
-[data-theme="dark"] .leaflet-tile{filter:brightness(0.8) invert(1) contrast(1.2) hue-rotate(170deg) saturate(0.35)}
 
 /* track eta banner & controls */
 .track-banner{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px;background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
@@ -602,7 +636,7 @@ select.f-select{width:100%;border:1px solid var(--line);border-radius:10px;paddi
 .order-box b{display:block;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
 
 @media print{
-  .nav,.announce,.footer,.judge-dock,.toast-wrap,.demo-advance-panel,.crumb,.btn-row,button,.stage-jumper-wrap,.track-banner-right{display:none!important}
+  .nav,.announce,.footer,.toast-wrap,.demo-advance-panel,.crumb,.btn-row,button,.stage-jumper-wrap,.track-banner-right{display:none!important}
   body{background:#fff!important;color:#000!important}
   .card,.order-box div,.manifest-item{border:1px solid #ccc!important;box-shadow:none!important;background:#fff!important}
   .page{max-width:100%!important;padding:0!important;margin:0!important}
@@ -620,25 +654,7 @@ select.f-select{width:100%;border:1px solid var(--line);border-radius:10px;paddi
 .modal-head{display:flex;justify-content:space-between;align-items:center;padding-bottom:12px;border-bottom:1px solid var(--line)}
 .faq-item{padding-bottom:12px;border-bottom:1px solid var(--line)}
 .faq-item:last-child{border-bottom:none;padding-bottom:0}
-
-/* judge demo dock */
-.judge-dock{position:fixed;bottom:20px;right:20px;z-index:99;font-family:var(--font-ui)}
-.judge-dock-toggle{display:flex;align-items:center;gap:8px;background:var(--forest);color:#F7F5F0;border:1px solid rgba(255,255,255,.2);border-radius:24px;padding:9px 16px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.25);cursor:pointer;transition:transform .15s,background .15s}
-.judge-dock-toggle:hover{transform:translateY(-2px);background:#22342B}
-.judge-dock-panel{display:none;position:absolute;bottom:0;right:0;width:330px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 40px rgba(0,0,0,.25);padding:16px;flex-direction:column;gap:12px;max-height:calc(100vh - 120px);overflow-y:auto}
-.judge-dock.open .judge-dock-panel{display:flex}
-.judge-dock.open .judge-dock-toggle{display:none}
-.judge-dock-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:10px}
-.judge-dock-title{font-weight:700;font-size:13.5px;color:var(--ink)}
-.judge-dock-sub{font-size:11.5px;color:var(--muted)}
-.judge-dock-body{display:flex;flex-direction:column;gap:10px}
-.judge-dock-group{display:flex;flex-direction:column;gap:5px}
-.judge-dock-lbl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
-.judge-dock-btns{display:flex;flex-direction:column;gap:6px}
 .btn-xs{padding:6px 10px;font-size:12px;border-radius:6px;min-height:30px}
-.btn-danger-text{color:#B3261E;border-color:rgba(179,38,30,.25)}
-.btn-danger-text:hover{background:rgba(179,38,30,.08)}
-.judge-dock-footnote{margin:4px 0 0;font-size:11px;color:var(--muted);line-height:1.35;text-align:center}
 
 /* footer */
 .footer{background:var(--forest);color:#CFC8B8;margin-top:0}
@@ -887,8 +903,6 @@ select.f-select{width:100%;border:1px solid var(--line);border-radius:10px;paddi
 @media(max-width:480px){
   .track-search-form{flex-direction:column}
   .track-search-form input,.track-search-form button{width:100%}
-  .judge-dock{bottom:14px;right:14px}
-  .judge-dock-panel{width:calc(100vw - 28px);max-width:320px}
   .confirm-stage-banner{padding:14px 16px}
 }
 @media(max-width:360px){

@@ -158,48 +158,9 @@
   </div>
 </div>
 
-<!-- Judge Demo Fast-Track Dock -->
-<div class="judge-dock" id="judgeDock">
-  <button class="judge-dock-toggle" id="judgeDockToggle" aria-label="Toggle Judge Demo Controls" title="Buka Kontrol Demo Juri">
-    <span class="judge-dock-icon">⚖️</span>
-    <span class="judge-dock-label">Judge Demo Controls</span>
-  </button>
-  <div class="judge-dock-panel" id="judgeDockPanel">
-    <div class="judge-dock-head">
-      <div>
-        <div class="judge-dock-title">⚖️ Judge Demo Controls</div>
-        <div class="judge-dock-sub">Demonstrasi Cepat Semua Tahap & Verifikasi</div>
-      </div>
-      <button class="icon-btn judge-dock-close" id="judgeDockClose" aria-label="Minimize Demo Controls">✕</button>
-    </div>
-    <div class="judge-dock-body">
-      <div class="judge-dock-group">
-        <span class="judge-dock-lbl">Checkout & Keranjang</span>
-        <div class="judge-dock-btns">
-          <button type="button" class="btn btn-ghost btn-xs" onclick="seedWeekendKit()">🛒 Isi Weekend Kit (Bundle 5%)</button>
-          <button type="button" class="btn btn-ghost btn-xs" onclick="autoFillCheckout()">📝 Auto-Fill Form Checkout</button>
-        </div>
-      </div>
-      <div class="judge-dock-group">
-        <span class="judge-dock-lbl">Pelacakan / Tracking Demo</span>
-        <div class="judge-dock-btns">
-          <button type="button" class="btn btn-dark btn-xs" onclick="seedDemoOrder()">⚡ Buat Order Demo Siap Lacak</button>
-          <button type="button" class="btn btn-terra btn-xs" onclick="advanceActiveOrder()">⏩ Majukan Tahap Pengiriman</button>
-        </div>
-      </div>
-      <div class="judge-dock-group">
-        <span class="judge-dock-lbl">Penyimpanan Browser (localStorage)</span>
-        <div class="judge-dock-btns">
-          <button type="button" class="btn btn-ghost btn-xs btn-danger-text" onclick="resetDemoData()">🔄 Reset Data Demo (Clean Slate)</button>
-        </div>
-      </div>
-      <p class="judge-dock-footnote">Data demo tersimpan lokal di browser (simulasi). Tidak ada koneksi server backend.</p>
-    </div>
-  </div>
-</div>
-
 <!-- Leaflet JS for interactive shipment map (Open source BSD-2-Clause, free OpenStreetMap tiles) -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="./route-data.js"></script>
 <script src="./app.js"></script>
 </body>
 </html>
