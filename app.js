@@ -404,11 +404,6 @@ function renderHome(){
     </div>
     <div class="hero-media">
       ${imgTag("https://images.unsplash.com/photo-1491637639811-60e2756cc1c7?q=80&w=1600&auto=format&fit=crop","hero","NOMAD Daypack resting on a trail in soft natural light","",true)}
-      <a class="hero-card" href="#/product/daypack-24" aria-label="View NOMAD Daypack 24L">
-        ${imgTag(PRODUCTS[0].images[0],"daypack-24","NOMAD Daypack 24L")}
-        <div class="hc-text"><div class="t">NOMAD Daypack 24L</div><div class="s">★★★★★ 4.9 · 412 reviews</div></div>
-        <span class="p">${rp(649000)}</span>
-      </a>
     </div>
   </section>
   <div class="trust"><div class="trust-inner">
