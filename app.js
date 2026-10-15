@@ -949,7 +949,10 @@ function bindCheckout(){
     m.innerHTML=`<div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
         <h3 style="margin:0">01 — Shipping Information</h3>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="autoFillCheckout()" style="padding:6px 12px;font-size:12px">⚡ Auto-Fill Demo Info</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="autoFillTangsel()" style="padding:6px 10px;font-size:11.5px" title="Isi alamat Tangerang Selatan untuk pengujian tracking Tangsel">📍 Demo Tangsel</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="autoFillCheckout()" style="padding:6px 10px;font-size:11.5px" title="Isi alamat Jakarta Selatan">⚡ Demo Jakarta</button>
+        </div>
       </div>
       <div class="form-grid">
       ${[["name","Full Name","text","e.g. Nadya Prameswari"],["phone","Phone Number","tel","e.g. 0812xxxxxxx"],["address","Address","text","Street, building, landmark"],["city","City","text","e.g. Jakarta Selatan"],["province","Province / Region","text","e.g. DKI Jakarta"],["postal","Postal Code","text","e.g. 12430"]].map(f=>`
@@ -1168,11 +1171,16 @@ window.placeOrder=()=>{
     const sh=SHIPPING.find(s=>s.id===co.ship)||SHIPPING[0];
     const etaText=sh.id==="sameday"?"Hari ini (Same Day · Kurir simulasi)":sh.id==="express"?"1–2 hari kerja (Express · Kurir simulasi)":"3–5 hari kerja (Reguler · Kurir simulasi)";
 
+    const destResolve = resolveOrderDestinationSync(co.info);
+
     const order={
       id,
       trackingNumber,
       items:JSON.parse(JSON.stringify(getCart())),
       info:{...co.info},
+      destCoords: destResolve.coords,
+      destLabel: destResolve.label,
+      destKey: destResolve.regionKey,
       ship:co.ship,
       pay:co.pay,
       sub:t.sub,
@@ -1364,14 +1372,20 @@ function renderTrackingList(){
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
         <h3 style="margin:0">Riwayat Pesanan Aktif</h3>
-        <span class="small muted">${orders.length} order${orders.length!==1?"s":""} tersimpan di sesi browser</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <button type="button" class="btn btn-ghost btn-xs" onclick="seedDemoOrderTangsel()" title="Buat pesanan demo tujuan Tangerang Selatan">📍 Demo Tangsel</button>
+          <button type="button" class="btn btn-ghost btn-xs" onclick="seedDemoOrder()" title="Buat pesanan demo tujuan Jakarta Selatan">⚡ Demo Jakarta</button>
+          <span class="small muted">${orders.length} order${orders.length!==1?"s":""} tersimpan</span>
+        </div>
       </div>
 
       ${!orders.length?`
         <div class="empty center" style="padding:28px 14px">
           <p class="muted" style="margin-bottom:14px">Belum ada pesanan dalam sesi browser ini. Buat pesanan baru untuk melihat live tracking simulasi.</p>
           <div class="btn-row" style="justify-content:center;gap:10px;flex-wrap:wrap">
-            <a href="#/shop" class="btn btn-dark btn-sm">BELANJA PRODUK</a>
+            <button type="button" class="btn btn-dark btn-sm" onclick="seedDemoOrderTangsel()">📍 BUAT DEMO TANGSEL</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="seedDemoOrder()">⚡ BUAT DEMO JAKARTA</button>
+            <a href="#/shop" class="btn btn-ghost btn-sm">BELANJA PRODUK</a>
           </div>
         </div>
       `:`
@@ -1443,10 +1457,177 @@ window.copyTrackingLink=(rawId)=>{
 
 /* ---------- REAL-ROAD OSRM DELIVERY NAVIGATION & TRACKING SYSTEM ---------- */
 
-// Origin: NOMAD Central Fulfillment Hub BSD
+// Origin: NOMAD Central Fulfillment Hub BSD, Tangerang Selatan
 const ORIGIN_COORDS = [-6.301832, 106.653237];
-// Destination: Jl. Senopati No. 42, Kebayoran Baru, Jakarta Selatan
-const DEST_COORDS = [-6.238311, 106.812402];
+
+// Verified Regional Destination Directory for fast & reliable offline/live tracking
+const REGION_COORDINATES = {
+  // Tangerang Selatan & subdistricts (Origin hub is located in BSD Serpong)
+  "tangerang selatan": { coords: [-6.279634, 106.724024], name: "Tangerang Selatan", key: "tangerang-selatan" },
+  "tangsel": { coords: [-6.279634, 106.724024], name: "Tangerang Selatan", key: "tangerang-selatan" },
+  "bintaro": { coords: [-6.279634, 106.724024], name: "Bintaro Jaya, Tangerang Selatan", key: "tangerang-selatan" },
+  "bsd": { coords: [-6.3050, 106.6710], name: "BSD City, Tangerang Selatan", key: "tangerang-selatan" },
+  "serpong": { coords: [-6.3150, 106.6750], name: "Serpong, Tangerang Selatan", key: "tangerang-selatan" },
+  "ciputat": { coords: [-6.3122, 106.7490], name: "Ciputat, Tangerang Selatan", key: "tangerang-selatan" },
+  "pamulang": { coords: [-6.3428, 106.7383], name: "Pamulang, Tangerang Selatan", key: "tangerang-selatan" },
+  "pondok aren": { coords: [-6.2690, 106.7030], name: "Pondok Aren, Tangerang Selatan", key: "tangerang-selatan" },
+  "alam sutera": { coords: [-6.2235, 106.6539], name: "Alam Sutera, Tangerang", key: "tangerang-selatan" },
+  "setu": { coords: [-6.3490, 106.6780], name: "Setu, Tangerang Selatan", key: "tangerang-selatan" },
+
+  // Kota Tangerang & Kabupaten
+  "kota tangerang": { coords: [-6.1783, 106.6319], name: "Kota Tangerang", key: "tangerang" },
+  "tangerang": { coords: [-6.1783, 106.6319], name: "Tangerang", key: "tangerang" },
+  "karawaci": { coords: [-6.2150, 106.6180], name: "Karawaci, Tangerang", key: "tangerang" },
+
+  // DKI Jakarta
+  "jakarta selatan": { coords: [-6.238311, 106.812402], name: "Kebayoran Baru, Jakarta Selatan", key: "jakarta-selatan" },
+  "jaksel": { coords: [-6.238311, 106.812402], name: "Jakarta Selatan", key: "jakarta-selatan" },
+  "senopati": { coords: [-6.238311, 106.812402], name: "Jl. Senopati, Jakarta Selatan", key: "jakarta-selatan" },
+  "kebayoran": { coords: [-6.238311, 106.812402], name: "Kebayoran Baru, Jakarta Selatan", key: "jakarta-selatan" },
+  "kemang": { coords: [-6.2600, 106.8160], name: "Kemang, Jakarta Selatan", key: "jakarta-selatan" },
+  "cilandak": { coords: [-6.2925, 106.8010], name: "Cilandak, Jakarta Selatan", key: "jakarta-selatan" },
+  "tebet": { coords: [-6.2260, 106.8580], name: "Tebet, Jakarta Selatan", key: "jakarta-selatan" },
+  "pasar minggu": { coords: [-6.2840, 106.8440], name: "Pasar Minggu, Jakarta Selatan", key: "jakarta-selatan" },
+  "jakarta pusat": { coords: [-6.1805, 106.8284], name: "Jakarta Pusat", key: "jakarta-pusat" },
+  "jakpus": { coords: [-6.1805, 106.8284], name: "Jakarta Pusat", key: "jakarta-pusat" },
+  "menteng": { coords: [-6.1960, 106.8320], name: "Menteng, Jakarta Pusat", key: "jakarta-pusat" },
+  "jakarta barat": { coords: [-6.1683, 106.7588], name: "Jakarta Barat", key: "jakarta-barat" },
+  "jakbar": { coords: [-6.1683, 106.7588], name: "Jakarta Barat", key: "jakarta-barat" },
+  "jakarta timur": { coords: [-6.2250, 106.9004], name: "Jakarta Timur", key: "jakarta-timur" },
+  "jaktim": { coords: [-6.2250, 106.9004], name: "Jakarta Timur", key: "jakarta-timur" },
+  "jakarta utara": { coords: [-6.1384, 106.8640], name: "Jakarta Utara", key: "jakarta-utara" },
+  "jakut": { coords: [-6.1384, 106.8640], name: "Jakarta Utara", key: "jakarta-utara" },
+  "dki jakarta": { coords: [-6.2088, 106.8456], name: "DKI Jakarta", key: "jakarta-selatan" },
+  "jakarta": { coords: [-6.2088, 106.8456], name: "DKI Jakarta", key: "jakarta-selatan" },
+
+  // Bodetabek & Jawa
+  "depok": { coords: [-6.4025, 106.7942], name: "Kota Depok", key: "depok" },
+  "bogor": { coords: [-6.5971, 106.8060], name: "Kota Bogor", key: "bogor" },
+  "bekasi": { coords: [-6.2383, 106.9756], name: "Kota Bekasi", key: "bekasi" },
+  "bandung": { coords: [-6.9175, 107.6191], name: "Kota Bandung", key: "bandung" },
+  "surabaya": { coords: [-7.2575, 112.7521], name: "Kota Surabaya", key: "surabaya" },
+  "semarang": { coords: [-6.9667, 110.4167], name: "Kota Semarang", key: "semarang" },
+  "yogyakarta": { coords: [-7.7956, 110.3695], name: "DI Yogyakarta", key: "yogyakarta" }
+};
+
+function isCoordsInTangerangSelatan(lat, lon) {
+  return lat >= -6.39 && lat <= -6.21 && lon >= 106.62 && lon <= 106.80;
+}
+
+function resolveOrderDestinationSync(info) {
+  if (!info) return { coords: [-6.279634, 106.724024], label: "Tangerang Selatan", regionKey: "tangerang-selatan" };
+  const fullText = [info.address, info.city, info.province, info.postal].filter(Boolean).join(" ").toLowerCase();
+
+  // Tangsel subdistricts & keywords check
+  const tangselKeywords = ["tangerang selatan", "tangsel", "bintaro", "bsd", "serpong", "ciputat", "pamulang", "pondok aren", "alam sutera", "setu"];
+  for (const kw of tangselKeywords) {
+    if (fullText.includes(kw)) {
+      const match = REGION_COORDINATES[kw] || REGION_COORDINATES["tangerang selatan"];
+      return {
+        coords: match.coords,
+        label: `${info.address ? info.address + ", " : ""}${info.city || match.name}`,
+        regionKey: "tangerang-selatan"
+      };
+    }
+  }
+
+  // Other regional keywords
+  for (const [kw, entry] of Object.entries(REGION_COORDINATES)) {
+    if (kw !== "jakarta" && fullText.includes(kw)) {
+      return {
+        coords: entry.coords,
+        label: `${info.address ? info.address + ", " : ""}${info.city || entry.name}`,
+        regionKey: entry.key
+      };
+    }
+  }
+
+  if (fullText.includes("jakarta")) {
+    const entry = REGION_COORDINATES["jakarta selatan"];
+    return {
+      coords: entry.coords,
+      label: `${info.address ? info.address + ", " : ""}${info.city || entry.name}`,
+      regionKey: "jakarta-selatan"
+    };
+  }
+
+  // Safe fallback default: Recipient address in Tangerang Selatan
+  return {
+    coords: [-6.279634, 106.724024],
+    label: `${info.address ? info.address + ", " : ""}${info.city || "Tujuan Pengiriman"}`,
+    regionKey: "tangerang-selatan"
+  };
+}
+
+async function resolveOrderDestination(o) {
+  if (!o || !o.info) {
+    return { coords: [-6.279634, 106.724024], label: "Tangerang Selatan", regionKey: "tangerang-selatan" };
+  }
+
+  // 1. If order already has verified coordinates stored, use them directly (zero repeat lookup)
+  if (Array.isArray(o.destCoords) && o.destCoords.length === 2 && !isNaN(o.destCoords[0]) && !isNaN(o.destCoords[1])) {
+    return {
+      coords: o.destCoords,
+      label: o.destLabel || `${o.info.address || ""}${o.info.address && o.info.city ? ", " : ""}${o.info.city || ""}`,
+      regionKey: o.destKey || resolveOrderDestinationSync(o.info).regionKey
+    };
+  }
+
+  const syncFallback = resolveOrderDestinationSync(o.info);
+
+  // 2. Attempt Nominatim live geocoding (one-time lookup with safety timeout)
+  try {
+    if (typeof fetch !== "undefined") {
+      const query = [o.info.address, o.info.city, "Indonesia"].filter(Boolean).join(", ");
+      const controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
+      const timeout = controller ? setTimeout(() => controller.abort(), 2500) : null;
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=id&limit=1`;
+      const resp = await fetch(url, {
+        headers: { "Accept-Language": "id,en" },
+        signal: controller ? controller.signal : undefined
+      });
+      if (timeout) clearTimeout(timeout);
+      if (resp && resp.ok) {
+        const list = await resp.json();
+        if (Array.isArray(list) && list.length > 0) {
+          const item = list[0];
+          const lat = Number(parseFloat(item.lat).toFixed(6));
+          const lon = Number(parseFloat(item.lon).toFixed(6));
+          const isTangselOrder = (o.info.city || "").toLowerCase().includes("tangerang selatan") ||
+                                 (o.info.city || "").toLowerCase().includes("tangsel") ||
+                                 (o.info.address || "").toLowerCase().includes("bintaro");
+
+          let isValid = true;
+          if (isTangselOrder && !isCoordsInTangerangSelatan(lat, lon)) {
+            isValid = false; // reject if geocoding drifted out of Tangsel
+          }
+
+          if (isValid && !isNaN(lat) && !isNaN(lon)) {
+            const resolved = {
+              coords: [lat, lon],
+              label: `${o.info.address ? o.info.address + ", " : ""}${o.info.city || ""}`,
+              regionKey: syncFallback.regionKey
+            };
+            o.destCoords = resolved.coords;
+            o.destLabel = resolved.label;
+            o.destKey = resolved.regionKey;
+            updateOrder(o);
+            return resolved;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.info("Nominatim geocode fallback to verified regional coordinates:", err.message);
+  }
+
+  // 3. Fallback to verified regional coordinates for that specific city
+  o.destCoords = syncFallback.coords;
+  o.destLabel = syncFallback.label;
+  o.destKey = syncFallback.regionKey;
+  updateOrder(o);
+  return syncFallback;
+}
 
 function haversineDistance(lat1, lon1, lat2, lon2) {
   const R = 6371000;
@@ -1485,18 +1666,19 @@ function prepareRouteData(rawRoute) {
     cumulativeDistances: cumDistances,
     totalDistance: totalDistance,
     distanceKm: (totalDistance / 1000).toFixed(1),
-    durationSec: rawRoute.duration || 1860,
-    source: rawRoute.source || "osrm-road-network"
+    durationSec: rawRoute.duration || Math.round(totalDistance / 11),
+    source: rawRoute.source || "osrm-road-network",
+    destCoords: rawRoute.destCoords || coords[coords.length - 1],
+    destLabel: rawRoute.destLabel || ""
   };
 }
 
-async function loadOSRMRoute(origin, dest) {
-  const fallback = typeof window !== "undefined" && window.NOMAD_DEFAULT_ROUTE ? window.NOMAD_DEFAULT_ROUTE : null;
+async function loadOSRMRoute(origin, dest, destKey, destLabel) {
   try {
     if (typeof fetch !== "undefined") {
       const url = `https://router.project-osrm.org/route/v1/driving/${origin[1]},${origin[0]};${dest[1]},${dest[0]}?overview=full&geometries=geojson&steps=true`;
       const controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
-      const timeout = controller ? setTimeout(() => controller.abort(), 3500) : null;
+      const timeout = controller ? setTimeout(() => controller.abort(), 4000) : null;
       const resp = await fetch(url, controller ? { signal: controller.signal } : {});
       if (timeout) clearTimeout(timeout);
       if (resp && resp.ok) {
@@ -1514,7 +1696,9 @@ async function loadOSRMRoute(origin, dest) {
             steps: steps,
             distance: r.distance,
             duration: r.duration,
-            source: "osrm-live-network"
+            source: "osrm-live-network",
+            destCoords: dest,
+            destLabel: destLabel
           });
         }
       }
@@ -1523,9 +1707,23 @@ async function loadOSRMRoute(origin, dest) {
     console.info("OSRM live fetch fallback to verified cached road coordinates:", err.message);
   }
 
-  if (fallback) {
-    return prepareRouteData({ ...fallback, source: "osrm-verified-cache" });
+  // Strictly use matching verified routes per destination region — never route Tangsel to Jakarta!
+  const isTangsel = destKey === "tangerang-selatan" || (Array.isArray(dest) && isCoordsInTangerangSelatan(dest[0], dest[1]));
+  if (typeof window !== "undefined") {
+    if (isTangsel) {
+      const tangselRoute = (window.NOMAD_VERIFIED_ROUTES && window.NOMAD_VERIFIED_ROUTES["tangerang-selatan"]) || window.NOMAD_TANGSEL_ROUTE;
+      if (tangselRoute) {
+        return prepareRouteData({ ...tangselRoute, source: "osrm-verified-cache-tangsel", destCoords: dest, destLabel: destLabel });
+      }
+    }
+    if (destKey === "jakarta-selatan") {
+      const jktRoute = (window.NOMAD_VERIFIED_ROUTES && window.NOMAD_VERIFIED_ROUTES["jakarta-selatan"]) || window.NOMAD_DEFAULT_ROUTE;
+      if (jktRoute) {
+        return prepareRouteData({ ...jktRoute, source: "osrm-verified-cache-jakarta", destCoords: dest, destLabel: destLabel });
+      }
+    }
   }
+
   return null;
 }
 
@@ -1552,8 +1750,12 @@ function getRouteStateAtDistance(distanceMeters, routeData) {
   const lng = p1[1] + t * (p2[1] - p1[1]);
   const bearing = calculateBearing(p1[0], p1[1], p2[0], p2[1]);
 
-  let streetName = "Jl. Senopati / Kebayoran Baru";
-  if (routeData.steps && routeData.steps.length) {
+  let streetName = "Jalan Lokal";
+  if (progressRatio >= 1.0) {
+    streetName = routeData.destLabel ? `Tiba di tujuan: ${routeData.destLabel}` : "Tiba di alamat tujuan";
+  } else if (progressRatio <= 0.02) {
+    streetName = "NOMAD Central Hub BSD";
+  } else if (routeData.steps && routeData.steps.length) {
     let stepDist = 0;
     for (const step of routeData.steps) {
       stepDist += step.distance;
@@ -1562,6 +1764,8 @@ function getRouteStateAtDistance(distanceMeters, routeData) {
         break;
       }
     }
+  } else {
+    streetName = routeData.destLabel || "Jalan Lokal";
   }
 
   let stage = 0;
@@ -1613,6 +1817,9 @@ function destroyTrackingMap() {
 
   if (trackingMapInstance) {
     try {
+      if (trackingMapInstance._resizeObs) {
+        trackingMapInstance._resizeObs.disconnect();
+      }
       trackingMapInstance.remove();
     } catch (err) {}
     trackingMapInstance = null;
@@ -1650,12 +1857,13 @@ function createCourierIcon(bearing = 0, isDelivered = false) {
   });
 }
 
-function renderMapFallbackHtml(currStage) {
+function renderMapFallbackHtml(currStage, o) {
+  const destText = o && o.info ? `${o.info.address || ""}${o.info.address && o.info.city ? ", " : ""}${o.info.city || "Alamat Penerima"}` : "Alamat Tujuan";
   const progressPct = Math.min(100, Math.round((currStage / (STATUSES.length - 1)) * 100));
   return `
     <div class="map-fallback">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-        <span class="small" style="font-weight:700;color:var(--forest)">Simulasi Rute Pengiriman Demo (Mode Diagram)</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:gap:8px">
+        <span class="small" style="font-weight:700;color:var(--ink)">Simulasi Rute Pengiriman Demo (Mode Diagram)</span>
         <span class="map-demo-badge"><span class="badge-dot"></span>Simulasi Rute Nyata · Bukan GPS Langsung</span>
       </div>
       <div class="map-fallback-steps">
@@ -1675,7 +1883,7 @@ function renderMapFallbackHtml(currStage) {
         }).join("")}
       </div>
       <p class="small muted" style="margin:14px auto 0;max-width:48ch;font-size:11px">
-        Fulfillment Hub BSD → Alamat Tujuan (Kebayoran Baru, Jakarta Selatan). Peta interaktif Leaflet akan aktif otomatis saat koneksi tile tersedia.
+        Fulfillment Hub BSD → ${esc(destText)}. Peta navigasi interaktif akan aktif saat koneksi tile peta tersedia.
       </p>
     </div>
   `;
@@ -1690,19 +1898,20 @@ async function mountTrackingMap(orderId) {
   const curr = typeof o.status === "number" && !isNaN(o.status) ? Math.max(0, Math.min(STATUSES.length - 1, o.status)) : 0;
 
   if (typeof L === "undefined") {
-    container.innerHTML = renderMapFallbackHtml(curr);
+    container.innerHTML = renderMapFallbackHtml(curr, o);
     return;
   }
 
   destroyTrackingMap();
   activeTrackingOrderId = o.id;
 
-  const routeData = await loadOSRMRoute(ORIGIN_COORDS, DEST_COORDS);
+  const destInfo = await resolveOrderDestination(o);
+  const routeData = await loadOSRMRoute(ORIGIN_COORDS, destInfo.coords, destInfo.regionKey, destInfo.label);
   if (!routeData) {
     container.innerHTML = `
       <div class="map-fallback">
-        <p class="muted small" style="margin:0 0 10px">Gagal memuat rute jalan nyata dari penyedia routing. Menampilkan mode diagram cadangan.</p>
-        ${renderMapFallbackHtml(curr)}
+        <p class="muted small" style="margin:0 0 10px">Rute jalan langsung untuk alamat ini dialihkan ke mode tahapan diagram terverifikasi.</p>
+        ${renderMapFallbackHtml(curr, o)}
       </div>
     `;
     return;
@@ -1733,7 +1942,7 @@ async function mountTrackingMap(orderId) {
     routePolyline = L.polyline(routeData.coordinates, {
       color: "#B87952",
       weight: 4,
-      opacity: 0.65
+      opacity: 0.75
     }).addTo(trackingMapInstance);
 
     const initialCutState = getRouteStateAtDistance(simState.currentMeters, routeData);
@@ -1752,17 +1961,19 @@ async function mountTrackingMap(orderId) {
       iconAnchor: [18, 22]
     });
     L.marker(ORIGIN_COORDS, { icon: originIcon })
-      .bindPopup("<b>NOMAD Fulfillment Hub BSD</b><br/><span style='font-size:11px;color:#666'>Pusat fulfillment logistik & kemasan ramah lingkungan</span>")
+      .bindPopup("<b>NOMAD Fulfillment Hub BSD</b><br/><span style='font-size:11px;color:var(--muted)'>Pusat fulfillment logistik & kemasan ramah lingkungan, Tangerang Selatan</span>")
       .addTo(trackingMapInstance);
 
+    // Place destination marker at the EXACT end coordinate of the polyline
+    const endCoord = routeData.coordinates[routeData.coordinates.length - 1];
     const destIcon = L.divIcon({
       className: "custom-map-marker",
       html: '<div class="marker-pin marker-dest" title="Alamat Tujuan">📍</div><span class="marker-label">Tujuan</span>',
       iconSize: [36, 44],
       iconAnchor: [18, 22]
     });
-    L.marker(DEST_COORDS, { icon: destIcon })
-      .bindPopup(`<b>Alamat Penerima</b><br/><span style='font-size:11px;color:#666'>${esc(o.info.address || "Jl. Senopati No. 42")}, ${esc(o.info.city || "Jakarta Selatan")}</span>`)
+    L.marker(endCoord, { icon: destIcon })
+      .bindPopup(`<b>Alamat Penerima</b><br/><span style='font-size:11px;color:var(--muted)'>${esc(destInfo.label || o.info.address || o.info.city)}</span>`)
       .addTo(trackingMapInstance);
 
     const courierIcon = createCourierIcon(initialCutState.bearing, simState.hasArrived);
@@ -1778,6 +1989,14 @@ async function mountTrackingMap(orderId) {
     setTimeout(() => {
       if (trackingMapInstance) trackingMapInstance.invalidateSize();
     }, 150);
+
+    if (typeof ResizeObserver !== "undefined") {
+      const resizeObs = new ResizeObserver(() => {
+        if (trackingMapInstance) trackingMapInstance.invalidateSize();
+      });
+      resizeObs.observe(container);
+      trackingMapInstance._resizeObs = resizeObs;
+    }
 
     updateHudUi(initialCutState, o);
 
@@ -1810,7 +2029,7 @@ async function mountTrackingMap(orderId) {
 
   } catch (err) {
     console.warn("Leaflet map initialization error:", err);
-    container.innerHTML = renderMapFallbackHtml(curr);
+    container.innerHTML = renderMapFallbackHtml(curr, o);
   }
 }
 
@@ -2099,6 +2318,10 @@ function renderTracking(id){
   const isDelivered = curr >= STATUSES.length - 1;
   const etaWindow = formatDateEstimate(o.ship, o.created);
   const pkgWeight = calcOrderWeight(o.items);
+  const destCity = (o.info && o.info.city) || "";
+  const destAddr = (o.info && o.info.address) || "";
+  const destNameShort = o.destLabel || (destCity ? `${destCity}` : "Alamat Tujuan");
+  const destFull = destAddr ? `${destAddr}${destCity ? ", " + destCity : ""}` : (o.destLabel || "Alamat Tujuan");
 
   return `<div class="page" style="max-width:760px">
     <div class="crumb"><a href="#/">Home</a> / <a href="#/tracking">Orders</a> / <b style="color:var(--ink)">${esc(o.id)}</b></div>
@@ -2112,7 +2335,7 @@ function renderTracking(id){
       <div class="track-map-head">
         <div>
           <h3 style="margin:0 0 2px">Peta Navigasi Pengiriman (Rute Jalan Nyata)</h3>
-          <span class="small muted">Rute navigasi OSRM: Central Hub BSD → Jl. Senopati, Kebayoran Baru</span>
+          <span class="small muted">Rute navigasi OSRM: Central Hub BSD → ${esc(destNameShort)}</span>
         </div>
         <span class="map-demo-badge">
           <span class="badge-dot"></span>
@@ -2174,7 +2397,7 @@ function renderTracking(id){
         </div>
         <div class="map-legend-item">
           <span class="legend-dot dest"></span>
-          <span>Tujuan: ${esc(o.info.address || "Jl. Senopati No. 42")}, ${esc(o.info.city || "Jakarta Selatan")}</span>
+          <span>Tujuan: ${esc(destFull)}</span>
         </div>
       </div>
       <p class="small muted" style="margin:10px 0 0;font-size:11px;line-height:1.4">
@@ -2187,7 +2410,7 @@ function renderTracking(id){
       <div class="track-banner-left">
         <span class="track-label">Estimasi Pengiriman Simulasi</span>
         <div class="track-eta-date">${esc(etaWindow)}</div>
-        <span class="small muted">Layanan: <b>${esc(sh.name)}</b> · Asal: Central Hub Jakarta Selatan</span>
+        <span class="small muted">Layanan: <b>${esc(sh.name)}</b> · Asal: Fulfillment Hub BSD</span>
       </div>
       <div class="track-banner-right">
         <button type="button" class="btn btn-ghost btn-xs" onclick="copyTrackingLink('${esc(o.id)}')">🔗 Salin Link Pelacakan</button>
@@ -2379,7 +2602,22 @@ window.autoFillCheckout=()=>{
     notes:"Tolong titipkan di pos sekuriti jika sedang tidak di tempat."
   };
   store.set("nomad_info",co.info);
-  toast("Data pengiriman demo terisi otomatis","ok");
+  toast("Data pengiriman demo Jakarta Selatan terisi otomatis","ok");
+  if(co.step===1) render(false);
+};
+
+window.autoFillTangsel=()=>{
+  co.info={
+    name:"Rifqi Pratama",
+    phone:"081312345678",
+    address:"Jl. Boulevard Bintaro Jaya Sektor 7, Pondok Aren",
+    city:"Tangerang Selatan",
+    province:"Banten",
+    postal:"15224",
+    notes:"Titipkan di resepsionis lobi kantor."
+  };
+  store.set("nomad_info",co.info);
+  toast("Data pengiriman demo Tangerang Selatan terisi otomatis","ok");
   if(co.step===1) render(false);
 };
 
@@ -2406,19 +2644,24 @@ window.seedDemoOrder=()=>{
   ];
   const sub=649000+249000;
   const shipCost=0; // Free Regular shipping for >500k
+  const info={
+    name:"Nadya Prameswari",
+    phone:"081298765432",
+    address:"Jl. Senopati No. 42, Kebayoran Baru",
+    city:"Jakarta Selatan",
+    province:"DKI Jakarta",
+    postal:"12190",
+    notes:"Demo order cepat Jakarta Selatan"
+  };
+  const destResolve = resolveOrderDestinationSync(info);
   const order={
     id,
     trackingNumber,
     items,
-    info:{
-      name:"Nadya Prameswari",
-      phone:"081298765432",
-      address:"Jl. Senopati No. 42, Kebayoran Baru",
-      city:"Jakarta Selatan",
-      province:"DKI Jakarta",
-      postal:"12190",
-      notes:"Demo order cepat untuk juri"
-    },
+    info,
+    destCoords: destResolve.coords,
+    destLabel: destResolve.label,
+    destKey: destResolve.regionKey,
     ship:"regular",
     pay:"qris",
     sub,
@@ -2441,7 +2684,61 @@ window.seedDemoOrder=()=>{
     ]
   };
   saveOrder(order);
-  toast("Order demo berhasil dibuat!","ok");
+  toast("Order demo Jakarta Selatan berhasil dibuat!","ok");
+  go("#/tracking/"+encodeURIComponent(id));
+};
+
+window.seedDemoOrderTangsel=()=>{
+  const now=new Date().toISOString();
+  const id="#NMD-"+Math.floor(100000+Math.random()*900000);
+  const trackingNumber="TRK-NMD-"+Math.floor(100000+Math.random()*900000);
+  const items=[
+    { pid:"daypack-24", color:"Slate", size:null, qty:1 },
+    { pid:"trail-sling", color:"Clay", size:null, qty:1 }
+  ];
+  const sub=649000+349000;
+  const shipCost=0;
+  const info={
+    name:"Rifqi Pratama",
+    phone:"081312345678",
+    address:"Jl. Boulevard Bintaro Jaya Sektor 7, Pondok Aren",
+    city:"Tangerang Selatan",
+    province:"Banten",
+    postal:"15224",
+    notes:"Demo order tujuan Tangerang Selatan"
+  };
+  const destResolve = resolveOrderDestinationSync(info);
+  const order={
+    id,
+    trackingNumber,
+    items,
+    info,
+    destCoords: destResolve.coords,
+    destLabel: destResolve.label,
+    destKey: destResolve.regionKey,
+    ship:"express",
+    pay:"qris",
+    sub,
+    disc:0,
+    bundle:0,
+    shipCost,
+    total:sub+shipCost,
+    coupon:null,
+    status:0,
+    created:now,
+    eta:"1–2 hari kerja (Express · Kurir simulasi)",
+    events:[
+      {
+        stage:0,
+        title:STATUSES[0],
+        desc:STATUS_DESC[0],
+        timestamp:now,
+        note:"Pesanan cepat demo Tangerang Selatan berhasil dibuat"
+      }
+    ]
+  };
+  saveOrder(order);
+  toast("Order demo Tangerang Selatan berhasil dibuat!","ok");
   go("#/tracking/"+encodeURIComponent(id));
 };
 
