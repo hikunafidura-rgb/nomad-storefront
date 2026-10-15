@@ -942,13 +942,7 @@ function bindCheckout(){
   if(co.step===1){
     const v=co.info;
     m.innerHTML=`<div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
-        <h3 style="margin:0">01 — Shipping Information</h3>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button type="button" class="btn btn-ghost btn-sm" onclick="autoFillTangsel()" style="padding:6px 10px;font-size:11.5px" title="Isi alamat Tangerang Selatan untuk pengujian tracking Tangsel">📍 Demo Tangsel</button>
-          <button type="button" class="btn btn-ghost btn-sm" onclick="autoFillCheckout()" style="padding:6px 10px;font-size:11.5px" title="Isi alamat Jakarta Selatan">⚡ Demo Jakarta</button>
-        </div>
-      </div>
+      <h3 style="margin:0 0 16px">01 — Shipping Information</h3>
       <div class="form-grid">
       ${[["name","Full Name","text","e.g. Nadya Prameswari"],["phone","Phone Number","tel","e.g. 0812xxxxxxx"],["address","Address","text","Street, building, landmark"],["city","City","text","e.g. Jakarta Selatan"],["province","Province / Region","text","e.g. DKI Jakarta"],["postal","Postal Code","text","e.g. 12430"]].map(f=>`
       <div class="field ${f[0]==="address"?"full":""}" id="fw-${f[0]}"><label for="fi-${f[0]}">${f[1]} *</label><input id="fi-${f[0]}" type="${f[2]}" placeholder="${f[3]}" value="${esc(v[f[0]]||"")}" /><span class="err-msg" role="alert">This field is required</span></div>`).join("")}
